@@ -17,7 +17,7 @@ def lambda_handler(event, context):
         teams = []
         for m in re.finditer(r"<tr><td>(\d+)</td><td>(.*?)</td><td>(\d+)</td></tr>", body):
             teams.append((m[1], m[2], m[3]))
-    print(len(teams))
+    print(teams)
     teams = teams[:30]
     len_place = max(len(t[0]) for t in teams)
     len_name = max(len(t[1]) for t in teams)
