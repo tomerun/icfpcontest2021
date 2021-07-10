@@ -25,7 +25,11 @@ orig_vs = conv_array_of_array_of_int(problem["figure"]["vertices"])
 res_vs = conv_array_of_array_of_int(result["vertices"])
 epsilon = problem["epsilon"].as_i
 if res_vs.empty?
-  puts "dislike:1e100"
+  puts "dislike=1e100"
+  exit
+end
+if res_vs.size != orig_vs.size
+  puts "output size (#{res_vs.size}) is different with problem (#{orig_vs.size})"
   exit
 end
 
@@ -89,4 +93,4 @@ end
 
 # calc score
 dislike = hole.map { |h| res_vs.min_of { |v| distance2(h, v) } }.sum
-puts "dislike:#{dislike}"
+puts "dislike=#{dislike}"
