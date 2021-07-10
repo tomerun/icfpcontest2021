@@ -163,6 +163,26 @@ def distance(p1, p2)
   return (p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2
 end
 
+def from_rhs(p1, p2, p3)
+  dx1 = p2[1] - p1[1]
+  dy1 = p2[0] - p1[0]
+  dx2 = p3[1] - p1[1]
+  dy2 = p3[0] - p1[0]
+  s = dx1 * dy2 - dy1 * dx2
+  return s < 0
+end
+
+def from_rhs_v(p1, p2, p3, p4)
+  a1 = -Math.atan2(p1[0] - p2[0], p1[1] - p2[1])
+  a2 = -Math.atan2(p3[0] - p2[0], p3[1] - p2[1])
+  a3 = -Math.atan2(p4[0] - p2[0], p4[1] - p2[1])
+  if a1 < a2
+    return a3 < a1 || a2 < a3
+  else
+    return a2 < a3 && a3 < a1
+  end
+end
+
 def shuffle(ar)
   (ar.size - 1).times do |i|
     pos = RND.next_int(ar.size - i).to_i + i
@@ -312,7 +332,6 @@ class Solver
     # TODO: select next vertex wisely
     @n.times do |i|
       next if @used[i]
-      # debug("put #{i}")
       {@cand_pos[i].ps.size, 10}.min.times do |cpi|
         cp = @cand_pos[i].ps[cpi]
         ok = true
@@ -380,30 +399,43 @@ class Solver
     y2, x2 = p2
     dx0 = x2 - x1
     dy0 = y2 - y1
+    on_edge_1 = false
+    on_edge_2 = false
+    on_same_edge = false
     @h.times do |hi|
       y3, x3 = @hole[hi]
       y4, x4 = @hole[hi + 1]
       v1 = dx0 * (y3 - y1) + dy0 * (x1 - x3)
       v2 = dx0 * (y4 - y1) + dy0 * (x1 - x4)
-      if v1 * v2 < 0
-        v3 = (x3 - x4) * (y1 - y3) + (y3 - y4) * (x3 - x1)
-        v4 = (x3 - x4) * (y2 - y3) + (y3 - y4) * (x3 - x2)
-        if v3 * v4 < 0
+      v3 = (x3 - x4) * (y1 - y3) + (y3 - y4) * (x3 - x1)
+      v4 = (x3 - x4) * (y2 - y3) + (y3 - y4) * (x3 - x2)
+      if v1 * v2 < 0 && v3 * v4 < 0
+        return true
+      end
+      ph = @hole[hi == 0 ? @h - 1 : hi - 1]
+      if p1 == @hole[hi]
+        if from_rhs_v(ph, @hole[hi], @hole[hi + 1], p2)
+          return true
+        end
+      elsif p1 != @hole[hi + 1] && v3 == 0 # p1 is on (@hole[hi]-@hole[hi+1])
+        if from_rhs(@hole[hi], @hole[hi + 1], p2)
+          return true
+        end
+      end
+      if p2 == @hole[hi]
+        if from_rhs_v(ph, @hole[hi], @hole[hi + 1], p1)
+          return true
+        end
+      elsif p2 != @hole[hi + 1] && v4 == 0 # p2 is on (@hole[hi]-@hole[hi+1])
+        if from_rhs(@hole[hi], @hole[hi + 1], p1)
           return true
         end
       end
       if v1 == 0
         dot = dx0 * (x3 - x1) + dy0 * (y3 - y1)
         if dot > 0 && distance(p1, @hole[hi]) < distance(p1, p2)
-          # hole[hi] is on the segment
-          y5, x5 = @hole[hi == 0 ? @h - 1 : hi - 1]
-          dx1 = x5 - x1
-          dy1 = y5 - y1
-          dx2 = x4 - x1
-          dy2 = y4 - y1
-          s1 = dx1 * dy0 - dy1 * dx0
-          s2 = dx2 * dy0 - dy2 * dx0
-          if s1 * s2 < 0
+          # @hole[hi] is on (p1-p2)
+          if from_rhs_v(ph, @hole[hi], @hole[hi + 1], p2)
             return true
           end
         end
