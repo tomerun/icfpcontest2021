@@ -7,7 +7,7 @@ const adjust = (input: Input, vertex: Vertex[]) => {
     let alpha = 0.00005;
     const max_itr = 10;
     
-    const [convertPosCanvToOrig, convertPosOrigToCanv] = getPosFunc(input);
+    const [convertPosCanvToOrig] = getPosFunc(input);
     const lb = convertPosCanvToOrig(5, 5)[0];
     const ub = convertPosCanvToOrig(595, 595)[0];
     

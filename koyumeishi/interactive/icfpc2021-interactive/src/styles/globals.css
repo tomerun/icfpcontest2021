@@ -26,11 +26,6 @@ a {
   padding: 25px;
 }
 
-.grid {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  max-width: 800px;
-  margin-top: 3rem;
+.invalidEdge{
+  background-color: #F4C2C2;
 }
