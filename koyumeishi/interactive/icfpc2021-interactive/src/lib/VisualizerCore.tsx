@@ -230,8 +230,7 @@ const drawOutput = () => {
         );
     }
     // hints
-    ctx.strokeStyle = "hsla(168, 100%, 50%, 80%)";
-    ctx.fillStyle = "hsla(168, 100%, 50%, 80%)";
+    ctx.strokeStyle = "hsla(200, 19%, 18%, 60%)";
     ctx.lineWidth = 1;
     vis.hint.forEach(p => {
         const q = convertPosOrigToCanv(p[0], p[1]);
@@ -411,6 +410,7 @@ const setHandler = () => {
             }
         }
         
+        setHint(vis.hintEdgeId);
         render();
     };
     
@@ -438,7 +438,7 @@ const setHandler = () => {
         render();
     };
     
-    window.addEventListener("keydown", (ev) => {
+    window.addEventListener("keyup", (ev) => {
         let dx: number = 0;
         let dy: number = 0;
         switch(ev.key){
@@ -470,6 +470,7 @@ const setHandler = () => {
         vis.scoreDataSetter(
             calcScore(vis.input, vis.vertex)
         );
+        setHint(vis.hintEdgeId);
         render();
 
     });
