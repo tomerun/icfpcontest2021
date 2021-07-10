@@ -33,12 +33,14 @@ if res_vs.size != orig_vs.size
   exit
 end
 
+valid = true
 # distance check
 edges.each do |e|
   orig_d2 = distance2(orig_vs[e[0]], orig_vs[e[1]])
   res_d2 = distance2(res_vs[e[0]], res_vs[e[1]])
   if (res_d2 - orig_d2).abs * 1000000 > epsilon * orig_d2
     puts "edge #{e[0]}-#{e[1]} violates distance condition: #{res_d2 / orig_d2}"
+    valid = false
   end
 end
 
@@ -70,6 +72,7 @@ res_vs.each do |v|
   end
   if !ok && count % 2 == 0
     puts "vertex (#{v[0]},#{v[1]}) is outside of the hole"
+    valid = false
   end
 end
 
@@ -77,6 +80,8 @@ end
 edges.each do |e|
   p1 = res_vs[e[0]]
   p2 = res_vs[e[1]]
+  dx0 = p2[0] - p1[0]
+  dy0 = p2[1] - p1[1]
   ok = true
   hole.size.times do |i|
     h1 = hole[i]
@@ -85,12 +90,32 @@ edges.each do |e|
       ok = false
       break
     end
+    dist = dx0 ** 2 + dy0 ** 2
+    dot = (h1[0] - p1[0]) * dx0 + (h1[1] - p1[1]) * dy0
+    if p1 != h1 && p2 != h1 && dot ** 2 == dist * distance2(p1, h1)
+      if dot > 0 && dist > distance2(p1, h1) || dot < 0 && dist > distance2(p2, h1)
+        # a vertex of the hole is on the edge
+        dx1 = h2[0] - p1[0]
+        dy1 = h2[1] - p1[1]
+        dx2 = hole[i - 1][0] - p1[0]
+        dy2 = hole[i - 1][1] - p1[1]
+        s1 = dx1 * dy0 - dy1 * dx0
+        s2 = dx2 * dy0 - dy2 * dx0
+        if s1 * s2 < 0
+          puts "#{p1} #{p2} #{h1} #{h2} #{hole[i - 1]}"
+          ok = false
+          valid = false
+          break
+        end
+      end
+    end
   end
   if !ok
     puts "edge #{e[0]}-#{e[1]} is crossing the hole"
+    valid = false
   end
 end
 
 # calc score
-dislike = hole.map { |h| res_vs.min_of { |v| distance2(h, v) } }.sum
+dislike = valid ? hole.map { |h| res_vs.min_of { |v| distance2(h, v) } }.sum : "1e100"
 puts "dislike=#{dislike}"

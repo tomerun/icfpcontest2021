@@ -378,16 +378,34 @@ class Solver
   def is_crossing(p1, p2)
     y1, x1 = p1
     y2, x2 = p2
+    dx0 = x2 - x1
+    dy0 = y2 - y1
     @h.times do |hi|
       y3, x3 = @hole[hi]
       y4, x4 = @hole[hi + 1]
-      v1 = (x1 - x2) * (y3 - y1) + (y1 - y2) * (x1 - x3)
-      v2 = (x1 - x2) * (y4 - y1) + (y1 - y2) * (x1 - x4)
+      v1 = dx0 * (y3 - y1) + dy0 * (x1 - x3)
+      v2 = dx0 * (y4 - y1) + dy0 * (x1 - x4)
       if v1 * v2 < 0
         v3 = (x3 - x4) * (y1 - y3) + (y3 - y4) * (x3 - x1)
         v4 = (x3 - x4) * (y2 - y3) + (y3 - y4) * (x3 - x2)
         if v3 * v4 < 0
           return true
+        end
+      end
+      if v1 == 0
+        dot = dx0 * (x3 - x1) + dy0 * (y3 - y1)
+        if dot > 0 && distance(p1, @hole[hi]) < distance(p1, p2)
+          # hole[hi] is on the segment
+          y5, x5 = @hole[hi == 0 ? @h - 1 : hi - 1]
+          dx1 = x5 - x1
+          dy1 = y5 - y1
+          dx2 = x4 - x1
+          dy2 = y4 - y1
+          s1 = dx1 * dy0 - dy1 * dx0
+          s2 = dx2 * dy0 - dy2 * dx0
+          if s1 * s2 < 0
+            return true
+          end
         end
       end
     end
