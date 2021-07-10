@@ -1,2 +1,5 @@
 *.dwarf
 *.zip
+*.txt
+result/*
+!result/best
