@@ -1,10 +1,10 @@
-0001 dislike=1420
-0002 dislike=1549
+0001 dislike=1331
+0002 dislike=1336
 0003 dislike=3610
 0004 dislike=1142
-0005 dislike=947
+0005 dislike=767
 0006 dislike=23292
-0007 dislike=1569
+0007 dislike=1499
 0008 dislike=1206
 0009 dislike=1e100
 0010 dislike=1625
@@ -53,7 +53,7 @@
 0053 dislike=0
 0054 dislike=0
 0055 dislike=145
-0056 dislike=3419
+0056 dislike=3381
 0057 dislike=5093
 0058 dislike=2845
 0059 dislike=400
@@ -63,7 +63,7 @@
 0063 dislike=1
 0064 dislike=367771
 0065 dislike=58415
-0066 dislike=10072
+0066 dislike=9934
 0067 dislike=4
 0068 dislike=879784
 0069 dislike=9479
@@ -74,10 +74,10 @@
 0074 dislike=89536
 0075 dislike=1e100
 0076 dislike=15990
-0077 dislike=27
-0078 dislike=101503
+0077 dislike=13
+0078 dislike=69108
 0079 dislike=72822
-0080 dislike=373525
+0080 dislike=164315
 0081 dislike=1e100
 0082 dislike=1e100
 0083 dislike=132986
