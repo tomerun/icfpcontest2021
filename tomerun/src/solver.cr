@@ -5,7 +5,8 @@ TL_SINGLE    =  1000
 RESULT_EMPTY = Result.new(Array(Point).new, 1i64 << 60)
 RND          = XorShift.new
 PLACE_PENA   = 40
-VERTEX_BONUS = 20
+VERTEX_BONUS = 40
+SEARCH_COUNT = 40
 
 class XorShift
   TO_DOUBLE = 0.5 / (1u64 << 63)
@@ -129,9 +130,11 @@ class Candidates
           end
         end
       end
-      # shuffle(@ps)
+      bonus_y = RND.next_int & 1
+      bonus_x = RND.next_int & 1
+      shuffle(@ps)
       @ps.sort_by! do |p|
-        @eval_pos[p[0]][p[1]]
+        @eval_pos[p[0]][p[1]] - ((p[0] & 1) == bonus_y && (p[1] & 1) == bonus_x ? -40 : 0)
       end
     end
   end
@@ -206,6 +209,7 @@ class Solver
     @pos = Array.new(@n, {0, 0})
     @best_result = RESULT_EMPTY
     @inside = Array.new(@max_y + 1) { Array.new(@max_x + 1, false) }
+    @search_order = [] of Int32
     0.upto(@max_y) do |y|
       cp = [] of Float64
       @h.times do |i|
@@ -299,6 +303,9 @@ class Solver
       revert(v1)
       return
     end
+    @search_order.clear
+    @search_order << v1 << v2
+    create_search_order()
     dfs(2)
     revert(v2)
     revert(v1)
@@ -313,8 +320,55 @@ class Solver
     if !put(v1, @hole[hi][0], @hole[hi][1])
       return
     end
+    @search_order.clear
+    @search_order << v1
+    create_search_order()
     dfs(1)
     revert(v1)
+  end
+
+  def create_search_order
+    visited = Array.new(@n, false)
+    count = Array.new(@n, 0)
+    @search_order.each do |i|
+      visited[i] = true
+      @graph[i].each do |adj|
+        count[adj[0]] += 1
+      end
+    end
+    while @search_order.size < @n
+      ni = @n.times.select { |i| !visited[i] }.max_by { |i| count[i] }
+      @search_order << ni
+      visited[ni] = true
+      @graph[ni].each do |adj|
+        count[adj[0]] += 1
+      end
+    end
+  end
+
+  def create_search_order2
+    visited = Array.new(@n, false)
+    @search_order.each { |i| visited[i] = true }
+    @search_order.each { |i| create_search_order_dfs(i, visited) }
+
+    # @n.times do |i|
+    #   cur = @search_order[i]
+    #   @graph[cur].each do |adj|
+    #     next if visited[adj[0]]
+    #     visited[adj[0]] = true
+    #     @search_order << adj[0]
+    #   end
+    # end
+  end
+
+  def create_search_order_dfs(cur, visited)
+    cands = @graph[cur].select { |adj| !visited[adj[0]] }.map { |v| v[0] }
+    cands.sort_by { |c| -@graph[c].size }.each do |c|
+      next if visited[c]
+      visited[c] = true
+      @search_order << c
+      create_search_order_dfs(c, visited)
+    end
   end
 
   def dfs(depth)
@@ -337,26 +391,25 @@ class Solver
       return
     end
     # TODO: select next vertex wisely
-    @n.times do |i|
-      next if @used[i]
-      {@cand_pos[i].ps.size, 30}.min.times do |cpi|
-        cp = @cand_pos[i].ps[cpi]
-        ok = true
-        @graph[i].each do |adj|
-          next if !@used[adj[0]]
-          if is_crossing(cp, @pos[adj[0]])
-            ok = false
-            break
-          end
+
+    ni = @search_order[depth]
+    {@cand_pos[ni].ps.size, SEARCH_COUNT}.min.times do |cpi|
+      cp = @cand_pos[ni].ps[cpi]
+      ok = true
+      @graph[ni].each do |adj|
+        next if !@used[adj[0]]
+        if is_crossing(cp, @pos[adj[0]])
+          ok = false
+          break
         end
-        next if !ok
-        if put(i, cp[0], cp[1])
-          dfs(depth + 1)
-          if @best_result.dislike == 0
-            break
-          end
-          revert(i)
+      end
+      next if !ok
+      if put(ni, cp[0], cp[1])
+        dfs(depth + 1)
+        if @best_result.dislike == 0
+          break
         end
+        revert(ni)
       end
     end
   end
