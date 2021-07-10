@@ -29,7 +29,7 @@ const getPosFunc = (input: Input) => {
     const objWidth = r-l;
     const objHeight = b-t;
     
-    const ratio = Math.max(
+    const ratio = Math.min(
         canvasWidth / Number(objWidth),
         canvasHeight / Number(objHeight),
     );
@@ -48,7 +48,11 @@ const getPosFunc = (input: Input) => {
         ];
     };
     
-    return [convertPosCanvToOrig, convertPosOrigToCanv];
+    const getGridRange = () => {
+        return [Math.min(l,t), Math.max(r,t)];
+    };
+    
+    return [convertPosCanvToOrig, convertPosOrigToCanv, getGridRange];
 };
 
 const getDist = (a: [number, number], b: [number, number]): number => {
