@@ -177,6 +177,7 @@ class Solver
   @cand_pos : Array(Candidates)
   @used : Array(Bool)
   @pos : Array(Point)
+  @best_result : Result
 
   def initialize(@hole : Array(Point), @graph : Array(Array(Tuple(Int32, Int32))), @epsilon : Int64)
     @n = @graph.size
@@ -187,6 +188,7 @@ class Solver
     max_x = @hole.max_of { |p| p[1] }
     @used = Array.new(@n, false)
     @pos = Array.new(@n, {0, 0})
+    @best_result = RESULT_EMPTY
     @inside = Array.new(max_y + 1) { Array.new(max_x + 1, false) }
     0.upto(max_y) do |y|
       cp = [] of Float64
@@ -241,61 +243,51 @@ class Solver
         end
       end
     end
-    best_result = RESULT_EMPTY
     shuffle(cands_pair)
     cands_pair.each do |c|
       @tl += TL_SINGLE
-      result = solve_with(*c)
-      if result.dislike < best_result.dislike
-        best_result = result
-        if best_result.dislike == 0
-          break
-        end
+      solve_with(*c)
+      if @best_result.dislike == 0
+        break
       end
       break if elapsed_ms > TL_WHOLE
     end
-    if best_result.dislike > 0 && elapsed_ms < TL_WHOLE
+    if @best_result.dislike > 0 && elapsed_ms < TL_WHOLE
       shuffle(cands_single)
       cands_single.each do |c|
         @tl += TL_SINGLE
-        result = solve_with(*c)
-        if result.dislike < best_result.dislike
-          best_result = result
-          if best_result.dislike == 0
-            break
-          end
+        solve_with(*c)
+        if @best_result.dislike == 0
+          break
         end
         break if elapsed_ms > TL_WHOLE
       end
     end
-    return best_result
+    return @best_result
   end
 
   def solve_with(v1, v2, hi)
     @cand_pos.each { |c| c.clear }
     @used.fill(false)
     debug("solve_with #{v1} #{v2} #{hi}")
-    res = RESULT_EMPTY
     if !put(v1, @hole[hi][0], @hole[hi][1])
-      return res
+      return
     end
     if !put(v2, @hole[hi + 1][0], @hole[hi + 1][1])
-      return res
+      return
     end
-    res = dfs(2)
-    return res
+    dfs(2)
   end
 
   def solve_with(v1, hi)
     @cand_pos.each { |c| c.clear }
     @used.fill(false)
     debug("solve_with #{v1} #{hi}")
-    res = RESULT_EMPTY
     if !put(v1, @hole[hi][0], @hole[hi][1])
-      return res
+      return
     end
-    res = dfs(1)
-    return res
+    dfs(1)
+    return
   end
 
   def dfs(depth)
@@ -308,18 +300,21 @@ class Solver
         end
         dislike += md
       end
-      debug("dislike:#{dislike}")
-      return Result.new(@pos.dup, dislike)
+      if dislike < @best_result.dislike
+        debug("dislike:#{dislike}")
+        @best_result = Result.new(@pos.dup, dislike)
+      end
+      return
     end
-    best_res = RESULT_EMPTY
     if elapsed_ms > @tl
-      return best_res
+      return
     end
     # TODO: select next vertex wisely
     @n.times do |i|
       next if @used[i]
       # debug("put #{i}")
-      @cand_pos[i].ps.each do |cp|
+      {@cand_pos[i].ps.size, 10}.min.times do |cpi|
+        cp = @cand_pos[i].ps[cpi]
         ok = true
         @graph[i].each do |adj|
           next if !@used[adj[0]]
@@ -331,18 +326,14 @@ class Solver
         next if !ok
         if put(i, cp[0], cp[1])
           # TODO: edge cross check for nonconvex hole
-          res = dfs(depth + 1)
-          if res.dislike < best_res.dislike
-            best_res = res
-            if best_res.dislike == 0
-              break
-            end
+          dfs(depth + 1)
+          if @best_result.dislike == 0
+            break
           end
           revert(i)
         end
       end
     end
-    return best_res
   end
 
   def put(vi, y, x)
