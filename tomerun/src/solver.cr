@@ -4,6 +4,8 @@ TL_WHOLE     = 20000
 TL_SINGLE    =  1000
 RESULT_EMPTY = Result.new(Array(Point).new, 1i64 << 60)
 RND          = XorShift.new
+PLACE_PENA   = 40
+VERTEX_BONUS = 20
 
 class XorShift
   TO_DOUBLE = 0.5 / (1u64 << 63)
@@ -88,7 +90,10 @@ class Candidates
   getter :ps
   @eps : Float64
 
-  def initialize(epsilon : Int64, @max_y : Int32, @max_x : Int32, @background : Array(Array(Bool)), @i : Int32)
+  def initialize(
+    epsilon : Int64, @max_y : Int32, @max_x : Int32,
+    @background : Array(Array(Bool)), @eval_pos : Array(Array(Int32))
+  )
     @init = false
     @ps = [] of Point
     @stack = Array(Tuple(Bool, Array(Point))).new
@@ -124,22 +129,9 @@ class Candidates
           end
         end
       end
-      shuffle(@ps)
+      # shuffle(@ps)
       @ps.sort_by! do |p|
-        sum = 0
-        if p[0] == 0 || !@background[p[0] - 1][p[1]]
-          sum -= 1
-        end
-        if p[0] == @max_y || !@background[p[0] + 1][p[1]]
-          sum -= 1
-        end
-        if p[1] == 0 || !@background[p[0]][p[1] - 1]
-          sum -= 1
-        end
-        if p[1] == @max_x || !@background[p[0]][p[1] + 1]
-          sum -= 1
-        end
-        sum
+        @eval_pos[p[0]][p[1]]
       end
     end
   end
@@ -198,19 +190,23 @@ class Solver
   @used : Array(Bool)
   @pos : Array(Point)
   @best_result : Result
+  @eval_pos : Array(Array(Int32))
+  @max_y : Int32
+  @max_x : Int32
 
   def initialize(@hole : Array(Point), @graph : Array(Array(Tuple(Int32, Int32))), @epsilon : Int64)
     @n = @graph.size
     @h = @hole.size
     @tl = 0i64
     @hole << @hole[0]
-    max_y = @hole.max_of { |p| p[0] }
-    max_x = @hole.max_of { |p| p[1] }
+    @max_y = @hole.max_of { |p| p[0] }
+    @max_x = @hole.max_of { |p| p[1] }
+    @eval_pos = Array.new(@max_y + 1) { Array.new(@max_x + 1, 0) }
     @used = Array.new(@n, false)
     @pos = Array.new(@n, {0, 0})
     @best_result = RESULT_EMPTY
-    @inside = Array.new(max_y + 1) { Array.new(max_x + 1, false) }
-    0.upto(max_y) do |y|
+    @inside = Array.new(@max_y + 1) { Array.new(@max_x + 1, false) }
+    0.upto(@max_y) do |y|
       cp = [] of Float64
       @h.times do |i|
         dy1 = @hole[i][0] - y
@@ -245,8 +241,12 @@ class Solver
         end
       end
     end
+    @h.times do |i|
+      change_eval_pos(@hole[i][0], @hole[i][1], VERTEX_BONUS, -1)
+    end
     # puts @inside.map { |row| row.map { |v| v ? "1" : "0" }.join }.join("\n")
-    @cand_pos = Array.new(@n) { |i| Candidates.new(@epsilon, max_y, max_x, @inside, i) }
+    @cand_pos = Array.new(@n) { |i| Candidates.new(@epsilon, @max_y, @max_x, @inside, @eval_pos) }
+    # debug(@eval_pos.map { |row| row.map { |v| sprintf("%4d", v) }.join }.join("\n"))
   end
 
   def solve
@@ -270,7 +270,7 @@ class Solver
       if @best_result.dislike == 0
         break
       end
-      break if elapsed_ms > TL_WHOLE
+      break if elapsed_ms > TL_WHOLE * 2 // 3
     end
     if @best_result.dislike > 0 && elapsed_ms < TL_WHOLE
       shuffle(cands_single)
@@ -287,27 +287,34 @@ class Solver
   end
 
   def solve_with(v1, v2, hi)
-    @cand_pos.each { |c| c.clear }
+    @cand_pos.each do |c|
+      c.clear
+    end
     @used.fill(false)
     debug("solve_with #{v1} #{v2} #{hi}")
     if !put(v1, @hole[hi][0], @hole[hi][1])
       return
     end
     if !put(v2, @hole[hi + 1][0], @hole[hi + 1][1])
+      revert(v1)
       return
     end
     dfs(2)
+    revert(v2)
+    revert(v1)
   end
 
   def solve_with(v1, hi)
-    @cand_pos.each { |c| c.clear }
+    @cand_pos.each do |c|
+      c.clear
+    end
     @used.fill(false)
     debug("solve_with #{v1} #{hi}")
     if !put(v1, @hole[hi][0], @hole[hi][1])
       return
     end
     dfs(1)
-    return
+    revert(v1)
   end
 
   def dfs(depth)
@@ -332,7 +339,7 @@ class Solver
     # TODO: select next vertex wisely
     @n.times do |i|
       next if @used[i]
-      {@cand_pos[i].ps.size, 10}.min.times do |cpi|
+      {@cand_pos[i].ps.size, 30}.min.times do |cpi|
         cp = @cand_pos[i].ps[cpi]
         ok = true
         @graph[i].each do |adj|
@@ -344,13 +351,21 @@ class Solver
         end
         next if !ok
         if put(i, cp[0], cp[1])
-          # TODO: edge cross check for nonconvex hole
           dfs(depth + 1)
           if @best_result.dislike == 0
             break
           end
           revert(i)
         end
+      end
+    end
+  end
+
+  def change_eval_pos(y, x, len, diff)
+    {-y, -len}.max.upto({len, @max_y - y}.min) do |my|
+      len_x = len - my.abs
+      {-x, -len_x}.max.upto({len_x, @max_x - x}.min) do |mx|
+        @eval_pos[y + my][x + mx] += diff * (len + 1 - my.abs - mx.abs)
       end
     end
   end
@@ -382,10 +397,14 @@ class Solver
       # puts "#{vi} -> #{adj}"
       # puts habit.map { |row| row.join }.join("\n")
     end
+    if ok
+      change_eval_pos(y, x, PLACE_PENA, 1)
+    end
     return ok
   end
 
   def revert(vi)
+    change_eval_pos(@pos[vi][0], @pos[vi][1], PLACE_PENA, -1)
     @used[vi] = false
     @graph[vi].each do |e|
       adj, d = e
