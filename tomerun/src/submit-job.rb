@@ -1,6 +1,5 @@
 require 'fileutils'
 
-range = 10
 array_size = 8
 contest_id = "ICFPC2021"
 solver_id = ARGV[0] || "00"
@@ -24,7 +23,7 @@ system("aws", "s3", "cp", "solver.zip", "s3://marathon-tester/#{solver_path}/sol
 
 
 result_path = "#{solver_path}/00"
-envs = "environment=[{name=RANGE,value=#{range}},{name=SUBMISSION_ID,value=#{solver_path}},{name=RESULT_PATH,value=#{result_path}}]"
+envs = "environment=[{name=ARRAY_SIZE,value=#{array_size}},{name=SUBMISSION_ID,value=#{solver_path}},{name=RESULT_PATH,value=#{result_path}}]"
 system('aws', *args, envs, exception: true)
 
 # ["0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8"].each do |i|
