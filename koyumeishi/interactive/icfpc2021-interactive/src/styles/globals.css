@@ -1,0 +1,36 @@
+html,
+body {
+  padding: 10;
+  margin: 10;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
+    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.textarea {
+  width: 400px;
+  height: 200px;
+}
+
+.mycanvas {
+  width: 650px;
+  height: 650px;
+  padding: 25px;
+}
+
+.grid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  max-width: 800px;
+  margin-top: 3rem;
+}
