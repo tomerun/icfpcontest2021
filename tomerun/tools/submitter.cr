@@ -1,5 +1,5 @@
 require "http/client"
-PROB_COUNT = 106
+PROB_COUNT = 132
 
 def read_scores(file_name)
   scores = Array.new(PROB_COUNT + 1, 1e100)

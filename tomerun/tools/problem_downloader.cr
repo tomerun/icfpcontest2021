@@ -3,7 +3,7 @@ require "http/client"
 headers = HTTP::Headers.new
 headers["Authorization"] = "Bearer #{ENV["API_KEY"]}"
 
-1.upto(59) do |i|
+1.upto(132) do |i|
   HTTP::Client.get("https://poses.live/api/problems/#{i}", headers: headers) do |res|
     puts res.status
     # puts res.headers
