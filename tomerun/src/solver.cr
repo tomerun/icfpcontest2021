@@ -467,12 +467,6 @@ class Solver
         @used[vi] = false
         break
       end
-      # habit = Array.new(@inside.size) { Array.new(@inside[0].size, 0) }
-      # @cand_pos[adj].ps.each do |p|
-      #   habit[p[0]][p[1]] = 1
-      # end
-      # puts "#{vi} -> #{adj}"
-      # puts habit.map { |row| row.join }.join("\n")
     end
     if ok
       change_eval_pos(y, x, PLACE_PENA, 1)
@@ -522,7 +516,10 @@ class Solver
     end
     initial_cooler = 0.3
     final_cooler = 2.0
+    initial_pena_coef = 5.0
+    final_pena_coef = 80.0
     @cooler = initial_cooler
+    pena_coef = initial_pena_coef
     sum_ratio_pena = 0.0
     start_time = elapsed_ms
     tl = IMPROVE_TL
@@ -530,7 +527,7 @@ class Solver
     inv_eps = 1000000 / (@epsilon + 1)
     while true
       turn += 1
-      if (turn & 0xFFF) == 0
+      if (turn & 0x3FFF) == 0
         elapsed = elapsed_ms - start_time
         if elapsed > tl
           debug("turn:#{turn}")
@@ -538,6 +535,23 @@ class Solver
         end
         time_ratio = elapsed / tl
         @cooler = Math.exp((1.0 - time_ratio) * Math.log(initial_cooler) + time_ratio * Math.log(final_cooler))
+        pena_coef = (final_pena_coef - initial_pena_coef) * time_ratio + initial_pena_coef
+        score -= sum_ratio_pena
+        old_sum_ratio_pena = sum_ratio_pena
+        sum_ratio_pena = 0.0
+        edges.each do |edge|
+          v1, v2, ed, pena = edge
+          ad = distance(vs[v1], vs[v2])
+          if (ad - ed).abs.to_i64 * 1000000 <= @epsilon * ed
+            next
+          end
+          ratio = ad / ed
+          ex = (ratio - 1).abs * inv_eps
+          sum_ratio_pena += ex ** 4
+        end
+        sum_ratio_pena *= pena_coef
+        score += sum_ratio_pena
+        debug("turn:#{turn} cooler:#{@cooler} pena:#{old_sum_ratio_pena}->#{sum_ratio_pena}")
       end
       vi = RND.next_int(@n)
       # my = 0.0
@@ -613,7 +627,8 @@ class Solver
         ex = (ratio - 1).abs * inv_eps
         diff_pena += ex ** 4
       end
-      diff_score += diff_pena * 50
+      diff_pena *= pena_coef
+      diff_score += diff_pena
       if !accept(diff_score)
         vs[vi] = op
         next
