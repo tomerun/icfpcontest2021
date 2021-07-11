@@ -1,14 +1,18 @@
 require "json"
-START_TIME      = Time.utc.to_unix_ms
-TL_WHOLE        = 200000
-TL_SINGLE       =   1000
-RESULT_EMPTY    = Result.new(Array(Point).new, 1i64 << 60)
-RND             = XorShift.new
-PLACE_PENA      =    10
-VERTEX_BONUS    =    10
-SEARCH_COUNT    =   400
-MAX_IMPROVE_CNT =     5
-IMPROVE_TL      = 10000
+START_TIME        = Time.utc.to_unix_ms
+TL_WHOLE          = 300000
+TL_SINGLE         =   1000
+RESULT_EMPTY      = Result.new(Array(Point).new, 1i64 << 60)
+RND               = XorShift.new
+PLACE_PENA        =    10
+VERTEX_BONUS      =    10
+SEARCH_COUNT      =   500
+MAX_IMPROVE_CNT   =    20
+IMPROVE_TL        = 10000
+INITIAL_COOLER    =   0.2
+FINAL_COOLER      =   1.0
+INITIAL_PENA_COEF =   2.0
+FINAL_PENA_COEF   =  50.0
 
 class XorShift
   TO_DOUBLE = 0.5 / (1u64 << 63)
@@ -77,8 +81,26 @@ def main
     graph[e[1]] << {e[0], dist}
   end
   solver = Solver.new(hole, graph, epsilon)
-  result = solver.solve
-  # debug("dislike:#{result.dislike}")
+  if !ARGV.empty?
+    best_result = RESULT_EMPTY
+    orig_vs = JSON.parse(File.read_lines(ARGV[0]).join("\n"))["vertices"].as_a
+    vs = orig_vs.map { |e| e.as_a.map { |v| v.as_i } }.map { |e| {e[1] - min_y, e[0] - min_x} }
+    dislike = 0i64
+    (hole.size - 1).times do |i|
+      dislike += vs.min_of { |v| distance(hole[i], v) }
+    end
+    debug(dislike)
+    result = Result.new(vs, dislike)
+    MAX_IMPROVE_CNT.times do
+      res = solver.improve(result)
+      if res.dislike < best_result.dislike
+        best_result = res
+      end
+    end
+    result = best_result
+  else
+    result = solver.solve
+  end
   puts({"vertices" => result.vertices.map { |p| [p[1] + min_x, p[0] + min_y] }}.to_json)
 end
 
@@ -554,12 +576,8 @@ class Solver
         end
       end
     end
-    initial_cooler = 0.3
-    final_cooler = 2.0
-    initial_pena_coef = 5.0
-    final_pena_coef = 80.0
-    @cooler = initial_cooler
-    pena_coef = initial_pena_coef
+    @cooler = INITIAL_COOLER
+    pena_coef = INITIAL_PENA_COEF
     sum_ratio_pena = 0.0
     start_time = elapsed_ms
     tl = IMPROVE_TL
@@ -574,8 +592,8 @@ class Solver
           break
         end
         time_ratio = elapsed / tl
-        @cooler = Math.exp((1.0 - time_ratio) * Math.log(initial_cooler) + time_ratio * Math.log(final_cooler))
-        pena_coef = (final_pena_coef - initial_pena_coef) * time_ratio + initial_pena_coef
+        @cooler = Math.exp((1.0 - time_ratio) * Math.log(INITIAL_COOLER) + time_ratio * Math.log(FINAL_COOLER))
+        pena_coef = (FINAL_PENA_COEF - INITIAL_PENA_COEF) * time_ratio + INITIAL_PENA_COEF
         score -= sum_ratio_pena
         old_sum_ratio_pena = sum_ratio_pena
         sum_ratio_pena = 0.0
