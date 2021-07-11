@@ -4,9 +4,9 @@ TL_WHOLE        = 200000
 TL_SINGLE       =   1000
 RESULT_EMPTY    = Result.new(Array(Point).new, 1i64 << 60)
 RND             = XorShift.new
-PLACE_PENA      =    40
-VERTEX_BONUS    =    40
-SEARCH_COUNT    =    40
+PLACE_PENA      =    10
+VERTEX_BONUS    =    10
+SEARCH_COUNT    =   400
 MAX_IMPROVE_CNT =     5
 IMPROVE_TL      = 10000
 
@@ -212,6 +212,8 @@ class Solver
     @best_result = RESULT_EMPTY
     @inside = Array.new(@max_y + 1) { Array.new(@max_x + 1, false) }
     @search_order = [] of Int32
+    @fast_back_to = Array(Int32).new(@n, -1)
+    @back_to = -1
     @cooler = 1.0
     0.upto(@max_y) do |y|
       cp = [] of Float64
@@ -272,7 +274,7 @@ class Solver
     shuffle(cands_pair)
     cands_pair.each do |c|
       @best_result = RESULT_EMPTY
-      @tl += TL_SINGLE
+      @tl = Time.utc.to_unix_ms - START_TIME + TL_SINGLE
       solve_with(*c)
       if @best_result.dislike == 0
         best_results = [@best_result]
@@ -287,8 +289,33 @@ class Solver
       shuffle(cands_single)
       cands_single.each do |c|
         @best_result = RESULT_EMPTY
-        @tl += TL_SINGLE
-        solve_with(*c)
+        @tl = Time.utc.to_unix_ms - START_TIME + TL_SINGLE
+        solve_with(c[0], @hole[c[1]])
+        if @best_result.dislike == 0
+          best_results = [@best_result]
+          break
+        end
+        if @best_result != RESULT_EMPTY
+          best_results << @best_result
+        end
+        break if elapsed_ms > TL_WHOLE
+      end
+    end
+    if @best_result.dislike > 0 && elapsed_ms < TL_WHOLE
+      cand_pos = Array(Point).new
+      0.upto(@max_y) do |y|
+        0.upto(@max_x) do |x|
+          if @inside[y][x]
+            cand_pos << {y, x}
+          end
+        end
+      end
+      while true
+        @best_result = RESULT_EMPTY
+        @tl = Time.utc.to_unix_ms - START_TIME + TL_SINGLE
+        start_pos = cand_pos[RND.next_int(cand_pos.size).to_i]
+        start_v = RND.next_int(@n).to_i
+        solve_with(start_v, start_pos)
         if @best_result.dislike == 0
           best_results = [@best_result]
           break
@@ -335,13 +362,13 @@ class Solver
     revert(v1)
   end
 
-  def solve_with(v1, hi)
+  def solve_with(v1, pos)
     @cand_pos.each do |c|
       c.clear
     end
     @used.fill(false)
-    debug("solve_with #{v1} #{hi}")
-    if !put(v1, @hole[hi][0], @hole[hi][1])
+    debug("solve_with #{v1} (#{pos[0]},#{pos[1]})")
+    if !put(v1, pos[0], pos[1])
       return
     end
     @search_order.clear
@@ -366,8 +393,10 @@ class Solver
       visited[ni] = true
       @graph[ni].each do |adj|
         count[adj[0]] += 10000
+        @fast_back_to[adj[0]] = ni
       end
     end
+    @back_to = -1
   end
 
   def create_search_order2
@@ -409,15 +438,14 @@ class Solver
         debug("dislike:#{dislike}")
         @best_result = Result.new(@pos.dup, dislike)
       end
-      return
+      return true
     end
-    if elapsed_ms > @tl
-      return
-    end
-    # TODO: select next vertex wisely
-
     ni = @search_order[depth]
+    found = false
     {@cand_pos[ni].ps.size, SEARCH_COUNT}.min.times do |cpi|
+      if elapsed_ms > @tl
+        break
+      end
       cp = @cand_pos[ni].ps[cpi]
       ok = true
       @graph[ni].each do |adj|
@@ -429,13 +457,25 @@ class Solver
       end
       next if !ok
       if put(ni, cp[0], cp[1])
-        dfs(depth + 1)
+        found_child = dfs(depth + 1)
+        revert(ni)
+        found |= found_child
+        if !found_child && @back_to != -1
+          if @back_to != ni
+            break
+          else
+            @back_to = -1
+          end
+        end
         if @best_result.dislike == 0
           break
         end
-        revert(ni)
       end
     end
+    if !found && @back_to == -1
+      @back_to = @fast_back_to[ni]
+    end
+    return found
   end
 
   def change_eval_pos(y, x, len, diff)
@@ -580,8 +620,8 @@ class Solver
       # end
       # my = (my + 0.5).floor.clamp(-3, 3)
       # mx = (mx + 0.5).floor.clamp(-3, 3)
-      my = RND.next_int(7) - 3
-      mx = RND.next_int(7) - 3
+      my = RND.next_int(5) - 2
+      mx = RND.next_int(5) - 2
       ny = (vs[vi][0] + my.to_i).clamp(0, @max_y)
       nx = (vs[vi][1] + mx.to_i).clamp(0, @max_x)
       if !@inside[ny][nx]
