@@ -477,10 +477,10 @@ class Solver
     @h.times do |hi|
       y3, x3 = @hole[hi]
       y4, x4 = @hole[hi + 1]
-      v1 = dx0 * (y3 - y1) + dy0 * (x1 - x3)
-      v2 = dx0 * (y4 - y1) + dy0 * (x1 - x4)
-      v3 = (x3 - x4) * (y1 - y3) + (y3 - y4) * (x3 - x1)
-      v4 = (x3 - x4) * (y2 - y3) + (y3 - y4) * (x3 - x2)
+      v1 = (dx0 * (y3 - y1) + dy0 * (x1 - x3)).to_i64
+      v2 = (dx0 * (y4 - y1) + dy0 * (x1 - x4)).to_i64
+      v3 = ((x3 - x4) * (y1 - y3) + (y3 - y4) * (x3 - x1)).to_i64
+      v4 = ((x3 - x4) * (y2 - y3) + (y3 - y4) * (x3 - x2)).to_i64
       if v1 * v2 < 0 && v3 * v4 < 0
         return true
       end

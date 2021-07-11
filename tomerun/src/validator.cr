@@ -13,7 +13,7 @@ def is_crossing(x1, y1, x2, y2, x3, y3, x4, y4)
   v2 = (x1 - x2) * (y4 - y1) + (y1 - y2) * (x1 - x4)
   v3 = (x3 - x4) * (y1 - y3) + (y3 - y4) * (x3 - x1)
   v4 = (x3 - x4) * (y2 - y3) + (y3 - y4) * (x3 - x2)
-  return v1 * v2 < 0 && v3 * v4 < 0
+  return v1.sign * v2.sign < 0 && v3.sign * v4.sign < 0
 end
 
 def is_inside(x, y, hole)
