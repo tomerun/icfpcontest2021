@@ -1,15 +1,15 @@
 require "json"
 START_TIME        = Time.utc.to_unix_ms
-TL_WHOLE          = 300000
+TL_WHOLE          = 100000
 TL_SINGLE         =   1000
 RESULT_EMPTY      = Result.new(Array(Point).new, 1i64 << 60)
 RND               = XorShift.new
-PLACE_PENA        =    10
+PLACE_PENA        =    80
 VERTEX_BONUS      =    10
-SEARCH_COUNT      =   500
-MAX_IMPROVE_CNT   =    20
+SEARCH_COUNT      =  1000
+MAX_IMPROVE_CNT   =    10
 IMPROVE_TL        = 10000
-INITIAL_COOLER    =   0.2
+INITIAL_COOLER    =   0.1
 FINAL_COOLER      =   1.0
 INITIAL_PENA_COEF =   2.0
 FINAL_PENA_COEF   =  50.0
@@ -237,6 +237,25 @@ class Solver
     @fast_back_to = Array(Int32).new(@n, -1)
     @back_to = -1
     @cooler = 1.0
+    @shortest = Array(Array(Float64)).new(@n) { Array.new(@n, 1e9) }
+    @n.times do |i|
+      @shortest[i][i] = 0.0
+      @graph[i].each do |adj|
+        @shortest[i][adj[0]] = ((adj[1] * (1 + @epsilon / 1000000))) ** 0.5
+      end
+    end
+    @n.times do |i|
+      @n.times do |j|
+        @n.times do |k|
+          @shortest[j][k] = {@shortest[j][k], @shortest[j][i] + @shortest[i][k]}.min
+        end
+      end
+    end
+    @n.times do |i|
+      @n.times do |j|
+        @shortest[i][j] *= @shortest[i][j]
+      end
+    end
     0.upto(@max_y) do |y|
       cp = [] of Float64
       @h.times do |i|
@@ -357,6 +376,7 @@ class Solver
         res = improve(best_results[i])
         if res.dislike < @best_result.dislike
           @best_result = res
+          break if res.dislike == 0
         end
       end
     end
@@ -473,6 +493,14 @@ class Solver
       @graph[ni].each do |adj|
         next if !@used[adj[0]]
         if is_crossing(cp, @pos[adj[0]])
+          ok = false
+          break
+        end
+      end
+      next if !ok
+      0.upto(depth - 1) do |i|
+        pni = @search_order[i]
+        if distance(cp, @pos[pni]) > @shortest[ni][pni]
           ok = false
           break
         end
