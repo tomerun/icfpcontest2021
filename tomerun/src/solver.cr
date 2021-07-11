@@ -1,12 +1,14 @@
 require "json"
-START_TIME   = Time.utc.to_unix_ms
-TL_WHOLE     = 20000
-TL_SINGLE    =  1000
-RESULT_EMPTY = Result.new(Array(Point).new, 1i64 << 60)
-RND          = XorShift.new
-PLACE_PENA   = 40
-VERTEX_BONUS = 40
-SEARCH_COUNT = 40
+START_TIME      = Time.utc.to_unix_ms
+TL_WHOLE        = 200000
+TL_SINGLE       =   1000
+RESULT_EMPTY    = Result.new(Array(Point).new, 1i64 << 60)
+RND             = XorShift.new
+PLACE_PENA      =    40
+VERTEX_BONUS    =    40
+SEARCH_COUNT    =    40
+MAX_IMPROVE_CNT =     5
+IMPROVE_TL      = 10000
 
 class XorShift
   TO_DOUBLE = 0.5 / (1u64 << 63)
@@ -210,6 +212,7 @@ class Solver
     @best_result = RESULT_EMPTY
     @inside = Array.new(@max_y + 1) { Array.new(@max_x + 1, false) }
     @search_order = [] of Int32
+    @cooler = 1.0
     0.upto(@max_y) do |y|
       cp = [] of Float64
       @h.times do |i|
@@ -248,9 +251,7 @@ class Solver
     @h.times do |i|
       change_eval_pos(@hole[i][0], @hole[i][1], VERTEX_BONUS, -1)
     end
-    # puts @inside.map { |row| row.map { |v| v ? "1" : "0" }.join }.join("\n")
     @cand_pos = Array.new(@n) { |i| Candidates.new(@epsilon, @max_y, @max_x, @inside, @eval_pos) }
-    # debug(@eval_pos.map { |row| row.map { |v| sprintf("%4d", v) }.join }.join("\n"))
   end
 
   def solve
@@ -267,24 +268,47 @@ class Solver
         end
       end
     end
+    best_results = [] of Result
     shuffle(cands_pair)
     cands_pair.each do |c|
+      @best_result = RESULT_EMPTY
       @tl += TL_SINGLE
       solve_with(*c)
       if @best_result.dislike == 0
+        best_results = [@best_result]
         break
+      end
+      if @best_result != RESULT_EMPTY
+        best_results << @best_result
       end
       break if elapsed_ms > TL_WHOLE * 2 // 3
     end
     if @best_result.dislike > 0 && elapsed_ms < TL_WHOLE
       shuffle(cands_single)
       cands_single.each do |c|
+        @best_result = RESULT_EMPTY
         @tl += TL_SINGLE
         solve_with(*c)
         if @best_result.dislike == 0
+          best_results = [@best_result]
           break
         end
+        if @best_result != RESULT_EMPTY
+          best_results << @best_result
+        end
         break if elapsed_ms > TL_WHOLE
+      end
+    end
+    if best_results.empty?
+      return RESULT_EMPTY
+    end
+    if best_results[0].dislike > 0
+      best_results.sort_by! { |r| r.dislike }
+      {MAX_IMPROVE_CNT, best_results.size}.min.times do |i|
+        res = improve(best_results[i])
+        if res.dislike < @best_result.dislike
+          @best_result = res
+        end
       end
     end
     return @best_result
@@ -329,11 +353,11 @@ class Solver
 
   def create_search_order
     visited = Array.new(@n, false)
-    count = Array.new(@n, 0)
+    count = Array.new(@n) { |i| @graph[i].size }
     @search_order.each do |i|
       visited[i] = true
       @graph[i].each do |adj|
-        count[adj[0]] += 1
+        count[adj[0]] += 10000
       end
     end
     while @search_order.size < @n
@@ -341,7 +365,7 @@ class Solver
       @search_order << ni
       visited[ni] = true
       @graph[ni].each do |adj|
-        count[adj[0]] += 1
+        count[adj[0]] += 10000
       end
     end
   end
@@ -466,17 +490,195 @@ class Solver
     end
   end
 
+  def is_valid_length(actual, expected)
+    return (actual - expected).abs.to_i64 * 1000000 <= @epsilon
+  end
+
+  def improve(result)
+    vs = result.vertices.dup
+    edges = [] of Tuple(Int32, Int32, Int32, Float64)
+    eis = Array.new(@n) { [] of Int32 }
+    @n.times do |i|
+      @graph[i].each do |adj|
+        if i < adj[0]
+          eis[i] << edges.size
+          eis[adj[0]] << edges.size
+          edges << {i, adj[0], adj[1], 0.0}
+        end
+      end
+    end
+
+    score = result.dislike
+    nearest_vi = Array.new(@h, 0)
+    nearest_d = Array.new(@h, 1 << 30)
+    @h.times do |i|
+      @n.times do |vi|
+        d = distance(@hole[i], vs[vi])
+        if d < nearest_d[i]
+          nearest_d[i] = d
+          nearest_vi[i] = vi
+        end
+      end
+    end
+    initial_cooler = 0.3
+    final_cooler = 2.0
+    @cooler = initial_cooler
+    sum_ratio_pena = 0.0
+    start_time = elapsed_ms
+    tl = IMPROVE_TL
+    turn = 0
+    inv_eps = 1000000 / (@epsilon + 1)
+    while true
+      turn += 1
+      if (turn & 0xFFF) == 0
+        elapsed = elapsed_ms - start_time
+        if elapsed > tl
+          debug("turn:#{turn}")
+          break
+        end
+        time_ratio = elapsed / tl
+        @cooler = Math.exp((1.0 - time_ratio) * Math.log(initial_cooler) + time_ratio * Math.log(final_cooler))
+      end
+      vi = RND.next_int(@n)
+      # my = 0.0
+      # mx = 0.0
+      # @graph[vi].each do |adj|
+      #   vi2 = adj[0]
+      #   ed = adj[1]
+      #   rd = distance(vs[vi], vs[vi2])
+      #   dy = vs[vi2][0] - vs[vi][0]
+      #   dx = vs[vi2][1] - vs[vi][1]
+      #   invnorm = 1.0 / Math.sqrt(dy ** 2 + dx ** 2)
+      #   ratio = rd / ed
+      #   rdiff = ((ratio - 1).abs * inv_eps) ** 3
+      #   myi = dy * invnorm * (rdiff + (RND.next_double * 0.2 - 0.1))
+      #   mxi = dx * invnorm * (rdiff + (RND.next_double * 0.2 - 0.1))
+      #   if ratio < 1
+      #     myi *= -1
+      #     mxi *= -1
+      #   end
+      #   angle = ((RND.next_double * 1.5)) * ((RND.next_int & 1).to_i32 * 2 - 1)
+      #   cos = Math.cos(angle)
+      #   sin = Math.sin(angle)
+      #   myi, mxi = myi * cos + mxi * sin, -myi * sin + mxi * cos
+      #   my += myi
+      #   mx += mxi
+      # end
+      # my = (my + 0.5).floor.clamp(-3, 3)
+      # mx = (mx + 0.5).floor.clamp(-3, 3)
+      my = RND.next_int(7) - 3
+      mx = RND.next_int(7) - 3
+      ny = (vs[vi][0] + my.to_i).clamp(0, @max_y)
+      nx = (vs[vi][1] + mx.to_i).clamp(0, @max_x)
+      if !@inside[ny][nx]
+        next
+      end
+      if {ny, nx} == vs[vi]
+        next
+      end
+      # debug("#{vs[vi]} -> #{{ny, nx}}")
+      ok = true
+      @graph[vi].each do |adj|
+        if is_crossing({ny, nx}, vs[adj[0]])
+          ok = false
+          break
+        end
+      end
+      if !ok
+        next
+      end
+      diff_score = 0
+      op = vs[vi]
+      vs[vi] = {ny, nx}
+      @h.times do |i|
+        if nearest_vi[i] == vi
+          nd = @n.times.min_of { |j| distance(@hole[i], vs[j]) }
+          diff_score += nd - nearest_d[i]
+        else
+          nd = distance(@hole[i], vs[vi])
+          if nd < nearest_d[i]
+            diff_score += nd - nearest_d[i]
+          end
+        end
+      end
+      diff_pena = 0.0
+      eis[vi].each do |ei|
+        v1, v2, ed, prev_pena = edges[ei]
+        diff_pena -= prev_pena
+        ad = distance(vs[v1], vs[v2])
+        if (ad - ed).abs.to_i64 * 1000000 <= @epsilon * ed
+          next
+        end
+        ratio = ad / ed
+        ex = (ratio - 1).abs * inv_eps
+        diff_pena += ex ** 4
+      end
+      diff_score += diff_pena * 50
+      if !accept(diff_score)
+        vs[vi] = op
+        next
+      end
+      sum_ratio_pena += diff_pena
+      # debug("turn:#{turn} diff_score:#{diff_score} score:#{score} ratio_pena:#{sum_ratio_pena} #{op}->#{vs[vi]}")
+      score += diff_score
+      if (score + 0.5).to_i < result.dislike && sum_ratio_pena.abs <= 1e-7
+        debug("turn:#{turn} best_score:#{(score + 0.5).to_i}")
+        result = Result.new(vs.dup, (score + 0.5).to_i64)
+      end
+      eis[vi].each do |ei|
+        v1, v2, ed, prev_pena = edges[ei]
+        ad = distance(vs[v1], vs[v2])
+        if (ad - ed).abs.to_i64 * 1000000 <= @epsilon * ed
+          new_pena = 0.0
+        else
+          ratio = ad / ed
+          ex = (ratio - 1).abs * inv_eps
+          new_pena = ex ** 4
+        end
+        edges[ei] = {v1, v2, ed, new_pena}
+      end
+      @h.times do |i|
+        if nearest_vi[i] == vi
+          nearest_d[i] = 1 << 30
+          @n.times do |j|
+            d = distance(@hole[i], vs[j])
+            if d < nearest_d[i]
+              nearest_d[i] = d
+              nearest_vi[i] = j
+            end
+          end
+        else
+          nd = distance(@hole[i], vs[vi])
+          if nd < nearest_d[i]
+            nearest_d[i] = nd
+            nearest_vi[i] = vi
+          end
+        end
+      end
+    end
+    return result
+  end
+
+  def accept(diff)
+    return true if diff <= 0
+    v = -diff * @cooler
+    return false if v < -10
+    return RND.next_double < Math.exp(-v)
+  end
+
   def is_crossing(p1, p2)
     y1, x1 = p1
     y2, x2 = p2
+    miny, maxy = {y1, y2}.minmax
+    minx, maxx = {x1, x2}.minmax
     dx0 = x2 - x1
     dy0 = y2 - y1
-    on_edge_1 = false
-    on_edge_2 = false
-    on_same_edge = false
     @h.times do |hi|
       y3, x3 = @hole[hi]
       y4, x4 = @hole[hi + 1]
+      if maxy < {y3, y4}.min || {y3, y4}.max < miny || maxx < {x3, x4}.min || {x3, x4}.max < minx
+        next
+      end
       v1 = (dx0 * (y3 - y1) + dy0 * (x1 - x3)).to_i64
       v2 = (dx0 * (y4 - y1) + dy0 * (x1 - x4)).to_i64
       v3 = ((x3 - x4) * (y1 - y3) + (y3 - y4) * (x3 - x1)).to_i64
