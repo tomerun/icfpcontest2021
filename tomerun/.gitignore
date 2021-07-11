@@ -1,5 +1,11 @@
 *.dwarf
 *.zip
 *.txt
+solver
+validator
+problem_downloader
+problem_info
+result_combiner
+submitter
 result/*
 !result/best
