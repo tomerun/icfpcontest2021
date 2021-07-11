@@ -81,7 +81,7 @@ hole = conv_array_of_array_of_int(problem["hole"])
 edges = conv_array_of_array_of_int(problem["figure"]["edges"])
 orig_vs = conv_array_of_array_of_int(problem["figure"]["vertices"])
 res_vs = conv_array_of_array_of_int(result["vertices"])
-epsilon = problem["epsilon"].as_i
+epsilon = problem["epsilon"].as_i64
 if res_vs.empty?
   puts "dislike=1e100"
   exit
@@ -96,7 +96,7 @@ valid = true
 edges.each do |e|
   orig_d2 = distance2(orig_vs[e[0]], orig_vs[e[1]])
   res_d2 = distance2(res_vs[e[0]], res_vs[e[1]])
-  if (res_d2 - orig_d2).abs * 1000000 > epsilon * orig_d2
+  if (res_d2 - orig_d2).abs.to_i64 * 1000000 > epsilon * orig_d2
     puts "edge #{e[0]}-#{e[1]} violates distance condition: #{res_d2 / orig_d2}"
     valid = false
   end
