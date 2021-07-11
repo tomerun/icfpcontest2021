@@ -13,34 +13,50 @@ function show() {
 	const hole = JSON.parse(problem.value).hole
 	const vertices = JSON.parse(solution.value).vertices
 	const edges = JSON.parse(problem.value).figure.edges
-	const max_coord = hole.concat(vertices).reduce((a, p)=> {
-		return Math.max(a, p[0], p[1])
+	const max_x = hole.reduce((a, p)=> {
+		return Math.max(a, p[0])
 	}, 10)
-	const drawScale = (canvas.width - margin * 2) / max_coord
+	const max_y = hole.reduce((a, p)=> {
+		return Math.max(a, p[1])
+	}, 10)
+	const drawScale = (canvas.width - margin * 2) / Math.max(max_x, max_y)
 	const ctx = canvas.getContext('2d'); 
-	ctx.fillStyle = '#AAAAAA'
+	ctx.fillStyle = '#CCCCCC'
 	ctx.fillRect(0, 0, canvas.width, canvas.height)
 	ctx.strokeStyle = 'black'
 	ctx.fillStyle = 'white'
-	ctx.scale(drawScale, drawScale)
-	ctx.lineWidth = 1.0 / drawScale
 	const margin_scaled = margin / drawScale
+	ctx.scale(drawScale, drawScale)
+	ctx.translate(margin_scaled, margin_scaled)
+	ctx.lineWidth = 1.0 / drawScale
 	ctx.beginPath()
-	ctx.moveTo(margin_scaled + hole[hole.length - 1][0], margin_scaled + hole[hole.length - 1][1])
+	ctx.moveTo(hole[hole.length - 1][0], hole[hole.length - 1][1])
 	hole.forEach((p) => {
-		ctx.lineTo(margin_scaled + p[0], margin_scaled + p[1])
+		ctx.lineTo(p[0], p[1])
 	})
 	ctx.closePath()
 	ctx.stroke()
 	ctx.fill()
+
+	ctx.strokeStyle = '#888888'
+	ctx.beginPath()
+	for (let i = 10; i < max_x; i += 10) {
+		ctx.moveTo(i, 0)
+		ctx.lineTo(i, max_y)
+	}
+	for (let i = 10; i < max_y; i += 10) {
+		ctx.moveTo(0, i)
+		ctx.lineTo(max_x, i)
+	}
+	ctx.stroke()
 
 	ctx.strokeStyle = 'red'
 	ctx.beginPath()
 	edges.forEach((e) => {
 		const v1 = vertices[e[0]]	
 		const v2 = vertices[e[1]]	
-		ctx.moveTo(margin_scaled + v1[0], margin_scaled + v1[1])
-		ctx.lineTo(margin_scaled + v2[0], margin_scaled + v2[1])
+		ctx.moveTo(v1[0], v1[1])
+		ctx.lineTo(v2[0], v2[1])
 	})
 	ctx.stroke()
 	ctx.resetTransform()
