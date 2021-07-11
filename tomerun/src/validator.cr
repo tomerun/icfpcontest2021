@@ -34,7 +34,7 @@ def is_inside(x, y, hole)
       return true # on a segment
     end
     # add small purturbation to avoid degeneration problem
-    if is_crossing(x, y + 0.001, -1, y + 0.001, h1[0], h1[1], h2[0], h2[1])
+    if is_crossing(x, y + 0.001, -1000, y + 0.001, h1[0], h1[1], h2[0], h2[1])
       count += 1
     end
   end
