@@ -2,7 +2,7 @@
 
 crystal build --release solver.cr
 mkdir result
-for (( i = 1; i <= 88; i++ )); do
+for (( i = 1; i <= 106; i++ )); do
 	if [ $(( i % $ARRAY_SIZE )) -eq $AWS_BATCH_JOB_ARRAY_INDEX ]
 	then
 		seed=$(printf "%04d" $i)

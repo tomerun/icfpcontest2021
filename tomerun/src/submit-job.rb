@@ -1,6 +1,6 @@
 require 'fileutils'
 
-array_size = 8
+array_size = 11
 contest_id = "ICFPC2021"
 solver_id = ARGV[0] || "00"
 solver_path = "#{contest_id}/#{solver_id}"
