@@ -1,6 +1,7 @@
 "use strict";
 const problem = document.getElementById("problem")
 const solution = document.getElementById("solution")
+const order = document.getElementById("order")
 const start = document.getElementById("start")
 const canvas = document.getElementById("canvas")
 const margin = 10
@@ -59,5 +60,15 @@ function show() {
 		ctx.lineTo(v2[0], v2[1])
 	})
 	ctx.stroke()
+
+	if (order.value) {
+		ctx.fillStyle = 'black'
+		ctx.font = `${drawScale * 0.2}px monospace`
+		const order_vs = JSON.parse(order.value)
+		for (let i = 0; i < order_vs.length; i++) {
+			ctx.fillText(i.toString(), vertices[order_vs[i]][0], vertices[order_vs[i]][1])
+		}
+	}
+
 	ctx.resetTransform()
 }
