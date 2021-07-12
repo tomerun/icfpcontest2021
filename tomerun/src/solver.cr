@@ -1,13 +1,13 @@
 require "json"
 START_TIME        = Time.utc.to_unix_ms
-TL_WHOLE          = 1000000
-TL_SINGLE         =    2000
+TL_WHOLE          = 400000
+TL_SINGLE         =   2000
 RESULT_EMPTY      = Result.new(Array(Point).new, 1i64 << 60)
 RND               = XorShift.new
 PLACE_PENA        =    10
 VERTEX_BONUS      =     0
 SEARCH_COUNT      =    30
-MAX_IMPROVE_CNT   =   100
+MAX_IMPROVE_CNT   =    20
 IMPROVE_TL        = 10000
 INITIAL_COOLER    =   0.2
 FINAL_COOLER      =   2.0
@@ -480,12 +480,20 @@ class Solver
   end
 
   def create_search_order0_dfs(start, visited, edges)
+    longest_edge = Array.new(@n, 0)
+    @graph[start].each do |adj|
+      longest_edge[adj[0]] = adj[1]
+    end
     qs = [[start], [] of Int32, [] of Int32]
     first = true
     while !qs.all? { |q| q.empty? }
-      q = qs.find { |q| !q.empty? }.not_nil!
-      cur = q.shift
-      # cur = q.pop
+      if !qs[0].empty?
+        cur = qs[0].max_by { |i| longest_edge[i] }
+        qs[0].delete(cur)
+      else
+        q = qs.find { |q| !q.empty? }.not_nil!
+        cur = q.pop
+      end
       if first
         first = false
       else
@@ -496,6 +504,11 @@ class Solver
       edges[cur].each do |e|
         next if visited[e[0]]
         qs[e[1]] << e[0]
+        @graph[e[0]].each do |adj|
+          if adj[0] == cur
+            longest_edge[e[0]] = {longest_edge[e[0]], adj[1]}.max
+          end
+        end
       end
     end
   end
