@@ -1,18 +1,23 @@
 require "json"
 START_TIME        = Time.utc.to_unix_ms
-TL_WHOLE          = 400000
-TL_SINGLE         =   2000
+TL_WHOLE          = 1000000
+TL_SINGLE         =   10000
 RESULT_EMPTY      = Result.new(Array(Point).new, 1i64 << 60)
 RND               = XorShift.new
 PLACE_PENA        =    10
 VERTEX_BONUS      =     0
-SEARCH_COUNT      =    30
-MAX_IMPROVE_CNT   =    20
+SEARCH_COUNT      = 50000
+MAX_IMPROVE_CNT   =    50
 IMPROVE_TL        = 10000
 INITIAL_COOLER    =   0.2
 FINAL_COOLER      =   2.0
 INITIAL_PENA_COEF =   0.5
 FINAL_PENA_COEF   =  50.0
+
+# FIX_VS = [4, 18, 58, 75, 96, 112, 94, 23]
+# FIX_HS = [8, 11, 17, 21, 31, 37, 39, 50]
+FIX_VS = [112]
+FIX_HS = [31]
 
 class XorShift
   TO_DOUBLE = 0.5 / (1u64 << 63)
@@ -253,11 +258,7 @@ class Solver
   @global_best : Int32
 
   def initialize(@hole : Array(Point), @graph : Array(Array(Tuple(Int32, Int32))), @epsilon : Int64)
-    if ENV.has_key?("SEED")
-      @global_best = File.read_lines("global_best.txt")[ENV["SEED"].to_i - 1].to_i
-    else
-      @global_best = 0
-    end
+    @global_best = 0
     @n = @graph.size
     @h = @hole.size
     @tl = 0i64
@@ -334,6 +335,15 @@ class Solver
   end
 
   def solve
+    if ENV.has_key?("SEED")
+      @global_best = File.read_lines("global_best.txt")[ENV["SEED"].to_i - 1].to_i
+      team_score = File.read_lines("team_score.txt")[ENV["SEED"].to_i - 1].to_i
+      if team_score <= @global_best
+        return RESULT_EMPTY
+      end
+    else
+      @global_best = 0
+    end
     cands_triple = [] of Tuple(Int32, Int32, Int32, Int32) # (v1, v2, v3, vh) : vertices(v1-v2-v3) => (vh-vh+1-vh+2)
     cands_pair = [] of Tuple(Int32, Int32, Int32)          # (v1, v2, vh) : vertices(v1, v2) => hole(vh, vh+1)
     cands_single = [] of Tuple(Int32, Int32)               # (v1, vh) : vertices(v1) => hole(vh)
@@ -355,6 +365,28 @@ class Solver
       end
     end
     best_results = [] of Result
+
+    if ENV.has_key?("SEED") && ENV["SEED"].to_i == 85
+      # special
+      FIX_VS.each do |vi|
+        FIX_HS.each do |hi|
+          @best_result = RESULT_EMPTY
+          @tl = Time.utc.to_unix_ms - START_TIME + TL_SINGLE
+          solve_with_vertex([vi], hi)
+          if @best_result.dislike == @global_best
+            best_results = [@best_result]
+            break
+          end
+          if @best_result != RESULT_EMPTY
+            best_results << @best_result
+          end
+          break if elapsed_ms > TL_WHOLE
+        end
+      end
+      return best_results[0]
+    end
+
+    debug(cands_triple)
     shuffle(cands_triple)
     cands_triple.each do |c|
       @best_result = RESULT_EMPTY
@@ -431,6 +463,7 @@ class Solver
       best_results.sort_by! { |r| r.dislike }
       {MAX_IMPROVE_CNT, best_results.size}.min.times do |i|
         res = improve(best_results[i])
+        STDERR.puts("#{best_results[i].dislike} => #{res.dislike}")
         if res.dislike < @best_result.dislike
           @best_result = res
           break if res.dislike == @global_best
@@ -456,7 +489,7 @@ class Solver
     end
     @search_order.clear
     @search_order.concat(vs)
-    create_search_order0()
+    create_search_order()
     dfs(vs.size)
     vs.reverse.each do |v|
       revert(v)
@@ -474,7 +507,7 @@ class Solver
     end
     @search_order.clear
     @search_order << v1
-    create_search_order0()
+    create_search_order()
     dfs(1)
     revert(v1)
   end
@@ -559,6 +592,16 @@ class Solver
     @search_order.each { |v| create_search_order0_dfs(v, visited, edges) }
     # puts @search_order
     # exit
+    visited.fill(false)
+    @n.times do |i|
+      vi = @search_order[i]
+      visited[vi] = true
+      @graph[vi].each do |adj|
+        if !visited[adj[0]]
+          @fast_back_to[adj[0]] = vi
+        end
+      end
+    end
     @back_to = -1
   end
 
@@ -577,7 +620,7 @@ class Solver
       visited[ni] = true
       @graph[ni].each do |adj|
         count[adj[0]] += 10000
-        @fast_back_to[adj[0]] = ni
+        @fast_back_to[adj[0]] = ni if !visited[adj[0]]
       end
     end
     @back_to = -1
@@ -631,6 +674,7 @@ class Solver
         break
       end
       cp = @cand_pos[ni].ps[cpi]
+      # debug("#{depth} #{ni} #{cp}")
       ok = true
       @graph[ni].each do |adj|
         next if !@used[adj[0]]
@@ -753,6 +797,18 @@ class Solver
     tl = IMPROVE_TL
     turn = 0
     inv_eps = 1000000 / (@epsilon + 1)
+    col_range = { {@max_y, @max_x}.max // 16, 10 }.max
+    bounce_ratio = 3.0
+    initial_dist_ratio = 0.01 / (@n - 1) / {@max_y, @max_x}.max
+    dist_ratio = initial_dist_ratio
+    time_ratio = 0.0
+    sum_dist = 0
+    all_pos = [] of Point
+    0.upto(@max_y) do |y|
+      0.upto(@max_x) do |x|
+        all_pos << {y, x} if @inside[y][x]
+      end
+    end
     while true
       turn += 1
       if (turn & 0x3FFF) == 0
@@ -779,7 +835,9 @@ class Solver
         end
         sum_ratio_pena *= pena_coef
         score += sum_ratio_pena
-        debug("turn:#{turn} cooler:#{@cooler} pena:#{old_sum_ratio_pena}->#{sum_ratio_pena}")
+        bounce_ratio = (1.0 - time_ratio) * 3.0
+        dist_ratio = (1.0 - time_ratio) * initial_dist_ratio
+        debugf("turn:%d score:%.2f pena:%.2f dist:%2f\n", turn, score, sum_ratio_pena, sum_dist)
       end
       vi = RND.next_int(@n)
       # my = 0.0
@@ -808,17 +866,34 @@ class Solver
       # end
       # my = (my + 0.5).floor.clamp(-3, 3)
       # mx = (mx + 0.5).floor.clamp(-3, 3)
-      my = RND.next_int(3) - 1
-      mx = RND.next_int(3) - 1
-      if my == 0 && mx == 0
-        if (RND.next_int & 1) == 0
-          my += RND.next_int(2) * 2 - 1
-        else
-          mx += RND.next_int(2) * 2 - 1
+      if time_ratio > 0.7 || RND.next_int & 7 != 0
+        myf = 0.0
+        mxf = 0.0
+        # @n.times do |i|
+        #   next if i == vi
+        #   dy = (vs[i][0] - vs[vi][0]).abs
+        #   dx = (vs[i][1] - vs[vi][1]).abs
+        #   next if dy > col_range || dx > col_range
+        #   d2 = dy ** 2 + dx ** 2
+        #   next if d2 > col_range * col_range || d2 == 0
+        #   inv_d2 = bounce_ratio / d2
+        #   myf += (vs[vi][0] - vs[i][0]) * inv_d2
+        #   mxf += (vs[vi][1] - vs[i][1]) * inv_d2
+        # end
+        my = (myf + 0.5).floor.to_i + RND.next_int(3) - 1
+        mx = (mxf + 0.5).floor.to_i + RND.next_int(3) - 1
+        if my == 0 && mxf == 0
+          if (RND.next_int & 1) == 0
+            my += RND.next_int(2) * 2 - 1
+          else
+            mx += RND.next_int(2) * 2 - 1
+          end
         end
+        ny = (vs[vi][0] + my.to_i).clamp(0, @max_y)
+        nx = (vs[vi][1] + mx.to_i).clamp(0, @max_x)
+      else
+        ny, nx = all_pos[RND.next_int(all_pos.size)]
       end
-      ny = (vs[vi][0] + my.to_i).clamp(0, @max_y)
-      nx = (vs[vi][1] + mx.to_i).clamp(0, @max_x)
       if !@inside[ny][nx]
         next
       end
@@ -864,10 +939,18 @@ class Solver
       end
       diff_pena *= pena_coef
       diff_score += diff_pena
-      if !accept(diff_score)
+      dist_diff = 0.0
+      # @n.times do |i|
+      #   next if i == vi
+      #   dist_diff += (vs[i][0] - vs[vi][0]).abs - (vs[i][0] - op[0]).abs
+      #   dist_diff += (vs[i][1] - vs[vi][1]).abs - (vs[i][1] - op[1]).abs
+      # end
+      # dist_diff *= dist_ratio
+      if !accept(diff_score - dist_diff)
         vs[vi] = op
         next
       end
+      sum_dist += dist_diff / dist_ratio
       sum_ratio_pena += diff_pena
       # debug("turn:#{turn} diff_score:#{diff_score} score:#{score} ratio_pena:#{sum_ratio_pena} #{op}->#{vs[vi]}")
       score += diff_score
