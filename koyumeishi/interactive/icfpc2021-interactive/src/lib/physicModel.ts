@@ -8,7 +8,7 @@ const adjust = () => {
 
     let alpha = 0.00005;
     const thr = 0.2;
-    const max_itr = 100;
+    const max_itr = 200;
     
     const [convertPosCanvToOrig] = getPosFunc(input);
     const lb = convertPosCanvToOrig(5, 5)[0];
@@ -57,7 +57,7 @@ const adjust = () => {
             if(dx !== 0 || dy !== 0){
                 ok = false;
             }
-            if(Math.random() < 0.5){
+            if(Math.random() < 0.3){
                 if(Math.random() < 0.5){
                     return moveVertex(v, dx, 0);
                 }else{

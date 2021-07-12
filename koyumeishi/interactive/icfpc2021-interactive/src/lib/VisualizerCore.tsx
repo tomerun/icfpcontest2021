@@ -144,7 +144,7 @@ const drawOutput = () => {
     const {input, vertex, outputSetter, ctx, convertPosOrigToCanv} = vis;
     
     const setBasicStroke = () => {
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 0.5;
         ctx.strokeStyle = "hsl(28, 0%, 27%)";
     };
     const setShortStroke = (r: number) => {
@@ -194,7 +194,7 @@ const drawOutput = () => {
     });
     
     ctx.lineWidth = 2;
-    const rad = 4;
+    const rad = 1;
     vertex.forEach((v, i) => {
         ctx.strokeStyle = "hsl(251, 69%, 34%)";
         ctx.fillStyle = "hsl(251, 69%, 34%)";
@@ -235,7 +235,7 @@ const drawOutput = () => {
     }
     // hints
     ctx.strokeStyle = "hsla(200, 19%, 18%, 60%)";
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 0.5;
     vis.hint.forEach(p => {
         const q = convertPosOrigToCanv(p[0], p[1]);
         ctx.beginPath();
@@ -329,6 +329,10 @@ const updateVertexState = (vertex: Vertex[], addHistory: boolean) => {
         vis.history.push([...vertex]);
     }
     setHint(vis.hintEdgeId);
+    
+    if(vis.history.length > 1000){
+        vis.history = vis.history.slice(500);
+    }
 }
 
 const setHandler = () => {
