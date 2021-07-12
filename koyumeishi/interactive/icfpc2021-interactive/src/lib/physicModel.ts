@@ -1,16 +1,18 @@
 import {Input, Vertex} from './models';
 import { getDist, getSafeRange, getPosFunc } from './utility';
+import {vis, moveVertex, updateVertexState} from './VisualizerCore';
 
-const adjust = (input: Input, vertex: Vertex[]) => {
+const adjust = () => {
+    let {input, vertex} = vis;
     const k = 1000000;
 
     let alpha = 0.00005;
-    const max_itr = 10;
+    const thr = 0.2;
+    const max_itr = 200;
     
     const [convertPosCanvToOrig] = getPosFunc(input);
     const lb = convertPosCanvToOrig(5, 5)[0];
     const ub = convertPosCanvToOrig(595, 595)[0];
-    
 
     for(let itr=0; itr<max_itr; itr++){
         let ax = vertex.map(_ => 0.0);
@@ -47,26 +49,38 @@ const adjust = (input: Input, vertex: Vertex[]) => {
             }        
         });
 
+        let ok = true;
         vertex = vertex.map((v, i) => {
             if(v.fixed) return v;
-            return {
-                ...v,
-                pos : [
-                    clamp(lb, ub, v.pos[0] - alpha * ax[i]),
-                    clamp(lb, ub, v.pos[1] - alpha * ay[i])
-                ],
+            const dx = ax[i] > thr ? -1 : ax[i] < -thr ? +1 : 0;
+            const dy = ay[i] > thr ? -1 : ay[i] < -thr ? +1 : 0;
+            if(dx !== 0 || dy !== 0){
+                ok = false;
             }
+            if(Math.random() < 0.3){
+                if(Math.random() < 0.5){
+                    return moveVertex(v, dx, 0);
+                }else{
+                    return moveVertex(v, 0, dy);
+                }
+            }
+            return v;
         });
-        
+        if(ok) break;
     }
     
-    vertex = vertex.map(v => {
-        return {
-            ...v,
-            pos: [Math.round(v.pos[0]), Math.round(v.pos[1])],
-        }
-    });
-    return vertex;
+    updateVertexState(
+        vertex.map(v => {
+            return {
+                ...v,
+                pos: [
+                    clamp(lb, ub, v.pos[0]),
+                    clamp(lb, ub, v.pos[1]),
+                ],
+            }
+        }),
+        true
+    );
 };
 
 const clamp = (lb: number, ub: number, x: number) => {

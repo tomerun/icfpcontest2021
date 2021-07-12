@@ -9,6 +9,13 @@ export interface Input {
     hole: Points,
     figure: Figure,
     epsilon: number,
+    bonuses: Bonuse[],
+};
+
+export interface Bonuse {
+    bonus: string,
+    problem: number,
+    position: [number, number],
 };
 
 export interface Output {

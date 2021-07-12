@@ -1,10 +1,10 @@
 import { useEffect} from 'react';
 import {selector, useRecoilValue, useSetRecoilState} from 'recoil';
-import {Button, Row, Form, FormGroup, FormLabel} from 'react-bootstrap';
+import {Button, Row, Form, Col} from 'react-bootstrap';
 
 import {Input, Output} from './models';
-import {inputState, outputState} from './TextArea';
-import {vis, startVisualize, render, setHint} from './VisualizerCore';
+import {initialOutputState, inputState, outputState} from './TextArea';
+import {vis, startVisualize, render, setHint, updateVertexState} from './VisualizerCore';
 import {scoreData} from './Score';
 import {adjust} from './physicModel';
 
@@ -18,13 +18,20 @@ const inputData = selector({
 
 const Visualizer = () => {
     const input = useRecoilValue(inputData);
+    const initialOutputStr = useRecoilValue(initialOutputState);
     const outputSetter = useSetRecoilState(outputState);
     const scoreDataSetter = useSetRecoilState(scoreData);
     
-    let initialOutput: Output = {vertices: [...input.figure.vertices]};
+    let initialOutput: Output;
+    
+    try{
+        initialOutput = JSON.parse(initialOutputStr) as Output;
+    }catch(e){
+        initialOutput = {vertices: [...input.figure.vertices]};
+    }
 
     const adjustButtonOnClick = () => {
-        vis.vertex = adjust(vis.input, vis.vertex);
+        adjust();
         render();
     };
 
@@ -46,9 +53,29 @@ const Visualizer = () => {
                 <canvas id="canvas" width="600" height="600"></canvas>
             </Row>
             <Row>
-                <Button onClick={adjustButtonOnClick}>
-                    Adjust
-                </Button>
+                <Col>
+                    <Button onClick={adjustButtonOnClick}>
+                        Adjust
+                    </Button>
+                </Col>
+                <Col>
+                    <Button onClick={(e)=>{
+                        try{
+                            if(vis.history.length > 1){
+                                vis.history.pop();
+                                updateVertexState(
+                                    [...vis.history[vis.history.length-1]],
+                                    false
+                                );
+                                render();
+                            }
+                        }catch(e){
+
+                        }
+                    }}>
+                        Undo
+                    </Button>
+                </Col>
                 <Form>
                     <Form.Label>Hint Edge Id</Form.Label>
                     <Form.Control as="select" onChange={(e) => hintIdChanged(parseInt(e.target.value))}>

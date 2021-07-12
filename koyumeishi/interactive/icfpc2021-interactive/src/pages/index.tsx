@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import React from 'react'
 import styles from '../styles/Home.module.css'
-import {InputArea, OutputArea} from '../lib/TextArea'
+import {InitialOutputArea, InputArea, OutputArea} from '../lib/TextArea'
 import { Visualizer } from '../lib/Visualizer'
 import { Infomation } from '../lib/Infomation'
 import {Container, Row, Col} from 'react-bootstrap';
@@ -26,6 +26,9 @@ export default function Home() {
         <Row>
           <Col>
             <InputArea />
+          </Col>
+          <Col>
+            <InitialOutputArea />
           </Col>
           <Col>
             <OutputArea />
