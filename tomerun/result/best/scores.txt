@@ -57,7 +57,7 @@
 0057 dislike=4514
 0058 dislike=2223
 0059 dislike=10
-0060 dislike=515
+0060 dislike=503
 0061 dislike=14489
 0062 dislike=4427
 0063 dislike=1
@@ -127,6 +127,6 @@
 0127 dislike=18073
 0128 dislike=11081
 0129 dislike=11529
-0130 dislike=6961
+0130 dislike=6844
 0131 dislike=34784
 0132 dislike=39730
