@@ -1,6 +1,6 @@
 require 'fileutils'
 
-array_size = 12
+array_size = 22
 contest_id = "ICFPC2021"
 solver_id = ARGV[0] || "00"
 solver_path = "#{contest_id}/#{solver_id}"
@@ -18,7 +18,7 @@ end
 args << '--container-overrides'
 
 FileUtils.remove_file("solver.zip", force=true)
-system("zip -j solver.zip solver.cr run.sh ../../problems/*.json", exception: true)
+system("zip -j solver.zip solver.cr run.sh global_best.txt ../../problems/*.json", exception: true)
 system("aws", "s3", "cp", "solver.zip", "s3://marathon-tester/#{solver_path}/solver.zip", exception: true)
 
 

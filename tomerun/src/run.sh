@@ -7,7 +7,7 @@ for (( i = 1; i <= 132; i++ )); do
 	then
 		seed=$(printf "%04d" $i)
 		echo $seed
-		./solver < $seed.json > result/$seed.json
+		SEED=$seed ./solver < $seed.json > result/$seed.json
 		aws s3 cp result/$seed.json s3://marathon-tester/$RESULT_PATH/
 	fi
 done
