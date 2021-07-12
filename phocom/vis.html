@@ -1,0 +1,515 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+	<meta charset="utf-8">
+</head>
+
+<body>
+	<table>
+		<tr>
+			<td>input:</td>
+			<td><input type="file" id="input" onchange="visInput(this.files)"></td>
+		</tr>
+		<tr>
+			<td>output (not necessary):</td>
+			<td><input type="file" id="output" onchange="visOutput(this.files)"></td>
+		</tr>
+		<tr>
+			<td>dislikes:</td>
+			<td><span id="score"></span></td>
+		</tr>
+		<tr>
+			<td>tolerance:</td>
+			<td><span id="tolerance"></span></td>
+		</tr>
+	</table>
+	<input type="checkbox" id="grid">グリッド
+	<input type="checkbox" id="showinfo">情報
+	<input type="checkbox" id="conv">力学的収束
+	<button id="adjust">アジャスト</button>
+	<button id="shuffle">シャッフル</button>
+	<button id="moveUp">↑</button>
+	<button id="moveDown">↓</button>
+	<button id="moveLeft">←</button>
+	<button id="moveRight">→</button>
+	<button id="dispUp">画面↑</button>
+	<button id="dispDown">画面↓</button>
+	<button id="dispLeft">画面←</button>
+	<button id="dispRight">画面→</button>
+	<button id="zoomUp">拡大</button>
+	<button id="zoomDown">縮小</button>
+	<br>
+	ドラッグ：移動　右クリック：固定/固定解除<br>
+	<canvas id="canv" width="800" height="800"></canvas>
+	<br>
+	<table id="info"></table>
+	<textarea id="gen" cols="60" rows="20"></textarea>
+
+	<script type="text/javascript">
+		const input = document.getElementById("input");
+		const output = document.getElementById("output");
+		const canv = document.getElementById("canv");
+		const gen = document.getElementById("gen");
+		const info = document.getElementById("info");
+		const ctx = canv.getContext('2d');
+		let hole, edges, lens = [], answer, eps, bonuses, G;
+		let scale = 4;
+		let ofx = 0, ofy = 0;
+		let fixed = [];
+		function drawHole() {
+			ctx.lineWidth = 3;
+			ctx.fillStyle = 'white';
+			ctx.fillRect(0, 0, 800, 800);
+
+			if (document.getElementById("grid").checked) {
+				ctx.strokeStyle = 'lightgray';
+				ctx.lineWidth = 0.5;
+				for (let i = 0; i < 800; i += scale) {
+					ctx.beginPath();
+					ctx.moveTo(i, 0);
+					ctx.lineTo(i, 799);
+					ctx.closePath();
+					ctx.stroke();
+				}
+				for (let i = 0; i < 800; i += scale) {
+					ctx.beginPath();
+					ctx.moveTo(0, i);
+					ctx.lineTo(799, i);
+					ctx.closePath();
+					ctx.stroke();
+				}
+				ctx.strokeStyle = 'gray';
+				for (let i = 0; i < 800; i += scale * 5) {
+					ctx.beginPath();
+					ctx.moveTo(i, 0);
+					ctx.lineTo(i, 799);
+					ctx.closePath();
+					ctx.stroke();
+				}
+				for (let i = 0; i < 800; i += scale * 5) {
+					ctx.beginPath();
+					ctx.moveTo(0, i);
+					ctx.lineTo(799, i);
+					ctx.closePath();
+					ctx.stroke();
+				}
+			}
+
+			for (const bonus of bonuses) {
+				if (bonus.bonus == "GLOBALIST") {
+					ctx.strokeStyle = 'yellow';
+					ctx.fillStyle = 'yellow';
+				} else if (bonus.bonus == "SUPERFLEX") {
+					ctx.strokeStyle = 'lightblue';
+					ctx.fillStyle = 'lightblue';
+				} else if (bonus.bonus == "WALLHACK") {
+					ctx.strokeStyle = 'orange';
+					ctx.fillStyle = 'orange';
+				} else {
+					ctx.strokeStyle = 'blue';
+					ctx.fillStyle = 'blue';
+				}
+				ctx.beginPath();
+				ctx.arc((bonus.position[0] - ofx) * scale, (bonus.position[1] - ofy) * scale - ofy, 8, 0, 2 * Math.PI);
+				ctx.closePath();
+				ctx.fill();
+			}
+
+			ctx.strokeStyle = 'black';
+			ctx.lineWidth = 3;
+			ctx.beginPath();
+			ctx.moveTo((hole[hole.length - 1][0] - ofx) * scale,
+				(hole[hole.length - 1][1] - ofy) * scale);
+			for (const i in hole) {
+				const v = hole[i];
+				ctx.lineTo((v[0] - ofx) * scale, (v[1] - ofy) * scale);
+			}
+			ctx.closePath();
+			ctx.stroke();
+		}
+		function drawPose() {
+			ctx.lineWidth = 3;
+			let sum = 0.0;
+			let infoStr = "<tr><td>v1</td><td>v2</td><td>current len</td><td>natural len</td><td>rate</td></tr>";
+			for (const i in edges) {
+				const e = edges[i];
+				const len = (answer[e[0]][0] - answer[e[1]][0]) ** 2 +
+					(answer[e[0]][1] - answer[e[1]][1]) ** 2;
+				const rate = (len / lens[i] - 1) / eps;
+				if (rate < -1 - 1e-9 || rate > 1 + 1e-9) {
+					ctx.fillStyle = 'red';
+					ctx.font = '14pt Arial';
+					ctx.fillText("!!", (answer[e[0]][0] + answer[e[1]][0] - ofx * 2) * scale / 2,
+						(answer[e[0]][1] + answer[e[1]][1] - ofy * 2) * scale / 2);
+				}
+				sum += Math.abs(len / lens[i] - 1);
+				infoStr += `<tr><td>[${answer[e[0]][0]},${answer[e[0]][1]}]</td><td>[${answer[e[1]][0]},${answer[e[1]][1]}]</td>`;
+				infoStr += `<td>${len}</td><td>${lens[i]}</td><td>${(len / lens[i] * 100).toFixed(2)}%</td></tr>`;
+				ctx.strokeStyle = `rgb(${127 + rate * 63},127,${127 - rate * 63})`;
+				ctx.beginPath();
+				ctx.moveTo((answer[e[0]][0] - ofx) * scale, (answer[e[0]][1] - ofy) * scale);
+				ctx.lineTo((answer[e[1]][0] - ofx) * scale, (answer[e[1]][1] - ofy) * scale);
+				ctx.closePath();
+				ctx.stroke();
+			} console.log(sum / edges.length);
+			if (document.getElementById("showinfo").checked) info.innerHTML = infoStr;
+
+			for (const i in answer) {
+				const v = answer[i];
+				if (fixed[i]) {
+					ctx.strokeStyle = 'lightgreen';
+					ctx.fillStyle = 'lightgreen';
+					ctx.fillRect((v[0] - ofx) * scale - 4, (v[1] - ofy) * scale - 4, 8, 8);
+				} else {
+					ctx.strokeStyle = 'green';
+					ctx.fillStyle = 'green';
+					ctx.beginPath();
+					ctx.arc((v[0] - ofx) * scale, (v[1] - ofy) * scale, 4, 0, 2 * Math.PI);
+					ctx.closePath();
+					ctx.fill();
+				}
+			}
+		}
+
+		function draw() {
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function calcScore() {
+			let score = 0;
+			for (const v of hole) {
+				let mn = 1e9;
+				for (const u of answer) {
+					mn = Math.min(mn, (v[0] - u[0]) ** 2 + (v[1] - u[1]) ** 2);
+				}
+				score += mn;
+			}
+			return score;
+		}
+		function visInput(files) {
+			const reader = new FileReader();
+			reader.readAsText(files[0]);
+			reader.onload = function () {
+				const problem = JSON.parse(reader.result);
+				hole = problem.hole;
+				edges = problem.figure.edges;
+				answer = problem.figure.vertices;
+				eps = problem.epsilon / 1000000;
+				fixed = Array(answer.length);
+				bonuses = problem.bonuses;
+				for (const i in answer) fixed[i] = false;
+				G = Array(answer.length);
+				for (const i in answer) G[i] = [];
+				drawHole();
+				lens = [];
+				for (const i in edges) {
+					const e = edges[i];
+					lens.push((answer[e[0]][0] - answer[e[1]][0]) ** 2 +
+						(answer[e[0]][1] - answer[e[1]][1]) ** 2);
+					G[e[0]].push(Number(i));
+					G[e[1]].push(Number(i));
+				}
+				drawPose();
+				document.getElementById("score").innerHTML = calcScore();
+				document.getElementById("tolerance").innerHTML = `${(100 - eps * 100).toFixed(2)}% ~ ${(100 + eps * 100).toFixed(2)}%`;
+			}
+		}
+
+		function visOutput(files) {
+			const reader = new FileReader();
+			reader.readAsText(files[0]);
+			reader.onload = function () {
+				answer = JSON.parse(reader.result).vertices; console.log(answer);
+				drawHole();
+				drawPose();
+				document.getElementById("score").innerHTML = calcScore();
+			}
+		}
+
+		function converge() {
+			const pow = Array(answer.length);
+			for (const i in answer) pow[i] = [0.0, 0.0];
+			for (const i in edges) {
+				const e = edges[i];
+				const len = (answer[e[0]][0] - answer[e[1]][0]) ** 2 +
+					(answer[e[0]][1] - answer[e[1]][1]) ** 2;
+				const rate = (len / lens[i] - 1) / eps;
+				let r = len / lens[i] - 1;
+				const dir = [answer[e[0]][0] - answer[e[1]][0], answer[e[0]][1] - answer[e[1]][1]];
+				r = Math.abs(r);
+				r = Math.min(r, 0.8);
+				if (rate > 0) {
+					pow[e[1]][0] += dir[0] * r / 8;
+					pow[e[1]][1] += dir[1] * r / 8;
+					pow[e[0]][0] -= dir[0] * r / 8;
+					pow[e[0]][1] -= dir[1] * r / 8;
+				} else {
+					pow[e[1]][0] -= dir[0] * r / 8;
+					pow[e[1]][1] -= dir[1] * r / 8;
+					pow[e[0]][0] += dir[0] * r / 8;
+					pow[e[0]][1] += dir[1] * r / 8;
+				}
+			}
+			for (const i in answer) if (!fixed[i] && i != dragging) {
+				answer[i][0] += pow[i][0];
+				answer[i][1] += pow[i][1];
+			}
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+			if (document.getElementById("conv").checked) {
+				setTimeout(converge, 40);
+			} else {
+				for (const i in answer) answer[i] = [Math.round(answer[i][0]), Math.round(answer[i][1])];
+				drawHole();
+				drawPose();
+				document.getElementById("score").innerHTML = calcScore();
+			}
+		}
+
+		let prevx, prevy, dragging = -1;
+
+		function adjust() {
+			const ofs = Array(answer.length);
+			for (const i in answer) ofs[i] = [0, 0];
+			function calc() {
+				let ret = 0.0;
+				for (const i in edges) {
+					const e = edges[i];
+					const len = (Math.round(answer[e[0]][0] + ofs[e[0]][0]) - Math.round(answer[e[1]][0] + ofs[e[1]][0])) ** 2 +
+						(Math.round(answer[e[0]][1] + ofs[e[0]][1]) - Math.round(answer[e[1]][1] + ofs[e[1]][1])) ** 2;
+					const rate = (len / lens[i] - 1) / eps;
+					if (rate < -0.5) {
+						ret += (-0.5 - rate) ** 2;
+					} else if (rate > 0.5) {
+						ret += (rate - 0.5) ** 2;
+					}
+				}
+				return ret;
+			}
+			function calcUpdate(v, next) {
+				let ret = 0.0;
+				for (const i in G[v]) {
+					let e = edges[G[v][i]];
+					if (e[0] != v) {
+						e = [e[1], e[0]];
+					}
+					const len = (Math.round(answer[e[0]][0] + ofs[e[0]][0]) - Math.round(answer[e[1]][0] + ofs[e[1]][0])) ** 2 +
+						(Math.round(answer[e[0]][1] + ofs[e[0]][1]) - Math.round(answer[e[1]][1] + ofs[e[1]][1])) ** 2;
+					const rate = (len / lens[G[v][i]] - 1) / eps;
+					if (rate < -0.5) {
+						ret -= (-0.5 - rate) ** 2;
+					} else if (rate > 0.5) {
+						ret -= (rate - 0.5) ** 2;
+					}
+					const len2 = (Math.round(answer[e[0]][0] + next[0]) - Math.round(answer[e[1]][0] + ofs[e[1]][0])) ** 2 +
+						(Math.round(answer[e[0]][1] + next[1]) - Math.round(answer[e[1]][1] + ofs[e[1]][1])) ** 2;
+					const rate2 = (len2 / lens[G[v][i]] - 1) / eps;
+					if (rate2 < -0.5) {
+						ret += (-0.5 - rate2) ** 2;
+					} else if (rate2 > 0.5) {
+						ret += (rate2 - 0.5) ** 2;
+					}
+				}
+
+				return ret;
+			}
+			let nows = calc();
+			for (let t = 0; t < 600; ++t) {
+				let i = Math.floor(Math.random() * answer.length);
+				while (fixed[i]) {
+					i = Math.floor(Math.random() * answer.length);
+				}
+				const dx = Math.floor(Math.random() * 5) - 2;
+				const dy = Math.floor(Math.random() * 5) - 2;
+				const diff = calcUpdate(i, [dx, dy]);
+				if (diff < 0) {
+					nows += diff;
+					ofs[i] = [dx, dy];
+				} else {
+				}
+			}
+			for (let i in ofs) {
+				answer[i][0] = Math.round(answer[i][0] + ofs[i][0]);
+				answer[i][1] = Math.round(answer[i][1] + ofs[i][1]);
+			}
+			draw();
+		}
+
+		function onDown(e) {
+			const offsetX = canv.getBoundingClientRect().left;
+			const offsetY = canv.getBoundingClientRect().top;
+
+			x = e.clientX - offsetX;
+			y = e.clientY - offsetY;
+
+			let mn = 1e9;
+			for (const i in answer) {
+				const v = answer[i];
+				const d = (x / scale + ofx - v[0]) ** 2 + (y / scale + ofy - v[1]) ** 2;
+				if (d < mn && d < 25) {
+					mn = d;
+					dragging = i;
+				}
+			}
+		}
+
+		function onMove(e) {
+			const offsetX = canv.getBoundingClientRect().left;
+			const offsetY = canv.getBoundingClientRect().top;
+
+			x = e.clientX - offsetX;
+			y = e.clientY - offsetY;
+
+			if (dragging != -1) {
+				answer[dragging] = [Math.round(x / scale + ofx), Math.round(y / scale + ofy)];
+				drawHole();
+				drawPose();
+				document.getElementById("score").innerHTML = calcScore();
+			}
+			gen.value = JSON.stringify({ vertices: answer });
+		}
+
+		function onUp(e) {
+			dragging = -1;
+		}
+
+		function fix(e) {
+			const offsetX = canv.getBoundingClientRect().left;
+			const offsetY = canv.getBoundingClientRect().top;
+
+			x = e.clientX - offsetX;
+			y = e.clientY - offsetY;
+
+			let mn = 1e9;
+			let tar = -1;
+			for (const i in answer) {
+				const v = answer[i];
+				const d = (x / scale + ofx - v[0]) ** 2 + (y / scale + ofy - v[1]) ** 2;
+				if (d < mn && d < 25) {
+					mn = d;
+					tar = i;
+				}
+			}
+			if (tar != -1) {
+				fixed[tar] = !fixed[tar];
+			}
+			draw();
+			return false;
+		}
+
+		function shuffle() {
+			for (const i in answer) {
+				answer[i] = [Math.round(Math.random() * 80), Math.round(Math.random() * 80)];
+			}
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function moveUp() {
+			for (const i in answer) {
+				answer[i][1]--;
+			}
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function moveDown() {
+			for (const i in answer) {
+				answer[i][1]++;
+			}
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function moveLeft() {
+			for (const i in answer) {
+				answer[i][0]--;
+			}
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function moveRight() {
+			for (const i in answer) {
+				answer[i][0]++;
+			}
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function dispUp() {
+			ofy--;
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function dispDown() {
+			ofy++;
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function dispLeft() {
+			ofx--;
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function dispRight() {
+			ofx++;
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function zoomUp() {
+			scale++;
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		function zoomDown() {
+			scale--;
+			drawHole();
+			drawPose();
+			document.getElementById("score").innerHTML = calcScore();
+		}
+
+		document.getElementById("conv").onclick = converge;
+		document.oncontextmenu = fix;
+		document.getElementById("adjust").onclick = adjust;
+		document.getElementById("shuffle").onclick = shuffle;
+		document.getElementById("moveUp").onclick = moveUp;
+		document.getElementById("moveDown").onclick = moveDown;
+		document.getElementById("moveLeft").onclick = moveLeft;
+		document.getElementById("moveRight").onclick = moveRight;
+		document.getElementById("dispUp").onclick = dispUp;
+		document.getElementById("dispDown").onclick = dispDown;
+		document.getElementById("dispLeft").onclick = dispLeft;
+		document.getElementById("dispRight").onclick = dispRight;
+
+		document.getElementById("zoomUp").onclick = zoomUp;
+		document.getElementById("zoomDown").onclick = zoomDown;
+		document.getElementById("grid").onchange = draw;
+		document.getElementById("showinfo").onchange = draw;
+
+		canv.addEventListener('mousedown', onDown, false);
+		canv.addEventListener('mousemove', onMove, false);
+		canv.addEventListener('mouseup', onUp, false);
+	</script>
+</body>
+
+</html>
