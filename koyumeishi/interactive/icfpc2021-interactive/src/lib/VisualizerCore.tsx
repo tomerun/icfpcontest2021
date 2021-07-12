@@ -31,6 +31,8 @@ interface VisualizerCore {
     
     hint: [number, number][];
     hintEdgeId: number;
+    
+    history: Vertex[][];
 }
 
 const initialize = (
@@ -72,6 +74,8 @@ const initialize = (
 
         hint: [],
         hintEdgeId: 0,
+        
+        history: [[...vertex]],
     };
     return res;
 }
@@ -305,6 +309,28 @@ const trySelect = (p0: [number, number], p1: [number, number]) => {
     return res;
 }
 
+
+const moveVertex = (v: Vertex, dx: number, dy: number) => {
+    return {
+        ...v,
+        pos: [v.pos[0]+dx, v.pos[1]+dy],
+    } as Vertex;
+}
+
+const updateVertexState = (vertex: Vertex[], addHistory: boolean) => {
+    vis.vertex = vertex;
+    vis.outputSetter(
+        JSON.stringify(VertexToOutput(vis.vertex))
+    );
+    vis.scoreDataSetter(
+        calcScore(vis.input, vis.vertex)
+    );
+    if(addHistory){
+        vis.history.push([...vertex]);
+    }
+    setHint(vis.hintEdgeId);
+}
+
 const setHandler = () => {
     vis.e.onmousedown = (me: MouseEvent)=>{
         me.preventDefault();
@@ -317,6 +343,7 @@ const setHandler = () => {
         const s = vis.convertPosCanvToOrig(x-margin, y-margin);
         const t = vis.convertPosCanvToOrig(x+margin, y+margin);
         
+
         if(me.button == 2){
             let v = trySelect(s,t);
             v.forEach(i => {
@@ -361,6 +388,7 @@ const setHandler = () => {
                 }
             }
         }
+        
         render();
     };
 
@@ -393,24 +421,17 @@ const setHandler = () => {
                 const dx = vis.selectEnd[0] - vis.selectStart[0];
                 const dy = vis.selectEnd[1] - vis.selectStart[1];
                 vis.selectStart = vis.selectEnd;
-                vis.vertex = vis.vertex.map(v => {
-                    if(v.fixed) return v;
-                    if(v.selected === false) return v;
-                    return {
-                        ...v,
-                        pos: [v.pos[0]+dx, v.pos[1]+dy],
-                    };
-                })
-                vis.outputSetter(
-                    JSON.stringify(VertexToOutput(vis.vertex))
-                );
-                vis.scoreDataSetter(
-                    calcScore(vis.input, vis.vertex)
+                updateVertexState(
+                    vis.vertex.map((v, i) => {
+                        if (v.fixed) return v;
+                        if (v.selected === false) return v;
+                        return moveVertex(v, dx, dy);
+                    }),
+                    false
                 );
             }
         }
         
-        setHint(vis.hintEdgeId);
         render();
     };
     
@@ -430,8 +451,11 @@ const setHandler = () => {
             if(vis.mode === SelectMode.Multiple){
             }
         }else{
-            if(vis.mode === SelectMode.None){
-            }else{
+            if(vis.mode === SelectMode.Move){
+                updateVertexState(
+                    [...vis.vertex],
+                    true
+                );
             }
         }
         
@@ -455,26 +479,20 @@ const setHandler = () => {
                 dy = 1;
                 break;
             default:
+                return;
         }
-            
-        vis.vertex = vis.vertex.map(v => {
-            if (v.fixed) return v;
-            if (v.selected === false) return v;
-            return {
-                ...v,
-                pos: [v.pos[0] + dx, v.pos[1] + dy],
-            };
-        });
-        vis.outputSetter(
-            JSON.stringify(VertexToOutput(vis.vertex)));
-        vis.scoreDataSetter(
-            calcScore(vis.input, vis.vertex)
+
+        updateVertexState(
+            vis.vertex.map((v, i) => {
+                if (v.fixed) return v;
+                if (v.selected === false) return v;
+                return moveVertex(v, dx, dy);
+            }),
+            false
         );
         setHint(vis.hintEdgeId);
         render();
-
     });
-
 }
 
 const suggestValidMove = (input: Input, vertex: Vertex[], edgeId: number) => {
@@ -511,8 +529,6 @@ const setHint = (edgeId: number) => {
     vis.hint = suggestValidMove(vis.input, vis.vertex, vis.hintEdgeId);
 };
 
-
-
 export {
     SelectMode,
     initialize,
@@ -520,6 +536,8 @@ export {
     startVisualize, 
     render,
     setHint,
+    moveVertex,
+    updateVertexState,
 };
 
 export type { VisualizerCore };
