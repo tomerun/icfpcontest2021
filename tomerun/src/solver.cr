@@ -4,10 +4,10 @@ TL_WHOLE          = 100000
 TL_SINGLE         =   1000
 RESULT_EMPTY      = Result.new(Array(Point).new, 1i64 << 60)
 RND               = XorShift.new
-PLACE_PENA        =    80
+PLACE_PENA        =   100
 VERTEX_BONUS      =    10
 SEARCH_COUNT      =  1000
-MAX_IMPROVE_CNT   =    10
+MAX_IMPROVE_CNT   =    50
 IMPROVE_TL        = 10000
 INITIAL_COOLER    =   0.1
 FINAL_COOLER      =   1.0
@@ -94,6 +94,8 @@ def main
     MAX_IMPROVE_CNT.times do
       res = solver.improve(result)
       if res.dislike < best_result.dislike
+        STDERR.puts "dislike:#{res.dislike}"
+        STDERR.puts res.vertices.map { |p| [p[1] + min_x, p[0] + min_y] }.to_json
         best_result = res
       end
     end
@@ -220,8 +222,14 @@ class Solver
   @eval_pos : Array(Array(Int32))
   @max_y : Int32
   @max_x : Int32
+  @global_best : Int32
 
   def initialize(@hole : Array(Point), @graph : Array(Array(Tuple(Int32, Int32))), @epsilon : Int64)
+    if ENV.has_key?("SEED")
+      @global_best = File.read_lines("global_best.txt")[ENV["SEED"].to_i - 1].to_i
+    else
+      @global_best = 0
+    end
     @n = @graph.size
     @h = @hole.size
     @tl = 0i64
@@ -317,7 +325,7 @@ class Solver
       @best_result = RESULT_EMPTY
       @tl = Time.utc.to_unix_ms - START_TIME + TL_SINGLE
       solve_with(*c)
-      if @best_result.dislike == 0
+      if @best_result.dislike == @global_best
         best_results = [@best_result]
         break
       end
@@ -326,13 +334,13 @@ class Solver
       end
       break if elapsed_ms > TL_WHOLE * 2 // 3
     end
-    if @best_result.dislike > 0 && elapsed_ms < TL_WHOLE
+    if @best_result.dislike > @global_best && elapsed_ms < TL_WHOLE
       shuffle(cands_single)
       cands_single.each do |c|
         @best_result = RESULT_EMPTY
         @tl = Time.utc.to_unix_ms - START_TIME + TL_SINGLE
         solve_with(c[0], @hole[c[1]])
-        if @best_result.dislike == 0
+        if @best_result.dislike == @global_best
           best_results = [@best_result]
           break
         end
@@ -342,7 +350,7 @@ class Solver
         break if elapsed_ms > TL_WHOLE
       end
     end
-    if @best_result.dislike > 0 && elapsed_ms < TL_WHOLE
+    if @best_result.dislike > @global_best && elapsed_ms < TL_WHOLE
       cand_pos = Array(Point).new
       0.upto(@max_y) do |y|
         0.upto(@max_x) do |x|
@@ -357,7 +365,7 @@ class Solver
         start_pos = cand_pos[RND.next_int(cand_pos.size).to_i]
         start_v = RND.next_int(@n).to_i
         solve_with(start_v, start_pos)
-        if @best_result.dislike == 0
+        if @best_result.dislike == @global_best
           best_results = [@best_result]
           break
         end
@@ -370,13 +378,13 @@ class Solver
     if best_results.empty?
       return RESULT_EMPTY
     end
-    if best_results[0].dislike > 0
+    if best_results[0].dislike > @global_best
       best_results.sort_by! { |r| r.dislike }
       {MAX_IMPROVE_CNT, best_results.size}.min.times do |i|
         res = improve(best_results[i])
         if res.dislike < @best_result.dislike
           @best_result = res
-          break if res.dislike == 0
+          break if res.dislike == @global_best
         end
       end
     end
@@ -517,7 +525,7 @@ class Solver
             @back_to = -1
           end
         end
-        if @best_result.dislike == 0
+        if @best_result.dislike == @global_best
           break
         end
       end
@@ -666,8 +674,15 @@ class Solver
       # end
       # my = (my + 0.5).floor.clamp(-3, 3)
       # mx = (mx + 0.5).floor.clamp(-3, 3)
-      my = RND.next_int(5) - 2
-      mx = RND.next_int(5) - 2
+      my = RND.next_int(3) - 1
+      mx = RND.next_int(3) - 1
+      if my == 0 && mx == 0
+        if (RND.next_int & 1) == 0
+          my += RND.next_int(2) * 2 - 1
+        else
+          mx += RND.next_int(2) * 2 - 1
+        end
+      end
       ny = (vs[vi][0] + my.to_i).clamp(0, @max_y)
       nx = (vs[vi][1] + mx.to_i).clamp(0, @max_x)
       if !@inside[ny][nx]
