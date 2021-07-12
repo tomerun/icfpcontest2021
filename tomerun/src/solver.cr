@@ -1,17 +1,17 @@
 require "json"
 START_TIME        = Time.utc.to_unix_ms
-TL_WHOLE          = 100000
-TL_SINGLE         =   1000
+TL_WHOLE          = 1000000
+TL_SINGLE         =    2000
 RESULT_EMPTY      = Result.new(Array(Point).new, 1i64 << 60)
 RND               = XorShift.new
-PLACE_PENA        =   100
-VERTEX_BONUS      =    10
-SEARCH_COUNT      =  1000
-MAX_IMPROVE_CNT   =    50
+PLACE_PENA        =    10
+VERTEX_BONUS      =     0
+SEARCH_COUNT      =    30
+MAX_IMPROVE_CNT   =   100
 IMPROVE_TL        = 10000
-INITIAL_COOLER    =   0.1
-FINAL_COOLER      =   1.0
-INITIAL_PENA_COEF =   2.0
+INITIAL_COOLER    =   0.2
+FINAL_COOLER      =   2.0
+INITIAL_PENA_COEF =   0.5
 FINAL_PENA_COEF   =  50.0
 
 class XorShift
@@ -50,6 +50,34 @@ end
 
 def elapsed_ms
   return Time.utc.to_unix_ms - START_TIME
+end
+
+class UnionFind
+  def initialize(size : Int32)
+    @root = Array(Int32).new(size, -1)
+  end
+
+  def union(i, j)
+    a = root(i)
+    b = root(j)
+    if a != b
+      @root[a] += @root[b]
+      @root[b] = a
+    end
+  end
+
+  def find(i, j)
+    root(i) == root(j)
+  end
+
+  def root(i)
+    return i if @root[i] < 0
+    @root[i] = root(@root[i])
+  end
+
+  def size(i)
+    -@root[root(i)]
+  end
 end
 
 alias Point = Tuple(Int32, Int32)
@@ -160,7 +188,7 @@ class Candidates
       bonus_x = RND.next_int & 1
       shuffle(@ps)
       @ps.sort_by! do |p|
-        @eval_pos[p[0]][p[1]] - ((p[0] & 1) == bonus_y && (p[1] & 1) == bonus_x ? -40 : 0)
+        @eval_pos[p[0]][p[1]] - ((p[0] & 1) == bonus_y && (p[1] & 1) == bonus_x ? 40 : 0)
       end
     end
   end
@@ -306,25 +334,46 @@ class Solver
   end
 
   def solve
-    cands_pair = [] of Tuple(Int32, Int32, Int32) # (v1, v2, vh) : vertices(v1, v2) => hole(vh, vh+1)
-    cands_single = [] of Tuple(Int32, Int32)      # (v1, vh) : vertices(v1) => hole(vh)
+    cands_triple = [] of Tuple(Int32, Int32, Int32, Int32) # (v1, v2, v3, vh) : vertices(v1-v2-v3) => (vh-vh+1-vh+2)
+    cands_pair = [] of Tuple(Int32, Int32, Int32)          # (v1, v2, vh) : vertices(v1, v2) => hole(vh, vh+1)
+    cands_single = [] of Tuple(Int32, Int32)               # (v1, vh) : vertices(v1) => hole(vh)
     @h.times do |i|
       dh = distance(@hole[i], @hole[i + 1])
+      dh2 = distance(@hole[i + 1], @hole[i == @h - 1 ? 1 : i + 2])
       @n.times do |j|
         cands_single << {j, i}
         @graph[j].each do |e|
           if dh == e[1]
             cands_pair << {j, e[0], i}
+            @graph[e[0]].each do |e2|
+              if e2[0] != j && e2[1] == dh2
+                cands_triple << {j, e[0], e2[0], i}
+              end
+            end
           end
         end
       end
     end
     best_results = [] of Result
+    shuffle(cands_triple)
+    cands_triple.each do |c|
+      @best_result = RESULT_EMPTY
+      @tl = Time.utc.to_unix_ms - START_TIME + TL_SINGLE
+      solve_with_vertex([c[0], c[1], c[2]], c[-1])
+      if @best_result.dislike == @global_best
+        best_results = [@best_result]
+        break
+      end
+      if @best_result != RESULT_EMPTY
+        best_results << @best_result
+      end
+      break if elapsed_ms > TL_WHOLE * 2 // 3
+    end
     shuffle(cands_pair)
     cands_pair.each do |c|
       @best_result = RESULT_EMPTY
       @tl = Time.utc.to_unix_ms - START_TIME + TL_SINGLE
-      solve_with(*c)
+      solve_with_vertex([c[0], c[1]], c[-1])
       if @best_result.dislike == @global_best
         best_results = [@best_result]
         break
@@ -339,7 +388,7 @@ class Solver
       cands_single.each do |c|
         @best_result = RESULT_EMPTY
         @tl = Time.utc.to_unix_ms - START_TIME + TL_SINGLE
-        solve_with(c[0], @hole[c[1]])
+        solve_with_vertex([c[0]], c[-1])
         if @best_result.dislike == @global_best
           best_results = [@best_result]
           break
@@ -364,7 +413,7 @@ class Solver
         @tl = Time.utc.to_unix_ms - START_TIME + TL_SINGLE
         start_pos = cand_pos[RND.next_int(cand_pos.size).to_i]
         start_v = RND.next_int(@n).to_i
-        solve_with(start_v, start_pos)
+        solve_with_pos(start_v, start_pos)
         if @best_result.dislike == @global_best
           best_results = [@best_result]
           break
@@ -391,28 +440,30 @@ class Solver
     return @best_result
   end
 
-  def solve_with(v1, v2, hi)
+  def solve_with_vertex(vs, hi)
     @cand_pos.each do |c|
       c.clear
     end
     @used.fill(false)
-    debug("solve_with #{v1} #{v2} #{hi}")
-    if !put(v1, @hole[hi][0], @hole[hi][1])
-      return
-    end
-    if !put(v2, @hole[hi + 1][0], @hole[hi + 1][1])
-      revert(v1)
-      return
+    debug("solve_with #{vs} #{hi}")
+    vs.size.times do |i|
+      if !put(vs[i], @hole[(hi + i) % @h][0], @hole[(hi + i) % @h][1])
+        (i - 1).downto(0) do |j|
+          revert(vs[j])
+        end
+        return
+      end
     end
     @search_order.clear
-    @search_order << v1 << v2
-    create_search_order()
-    dfs(2)
-    revert(v2)
-    revert(v1)
+    @search_order.concat(vs)
+    create_search_order0()
+    dfs(vs.size)
+    vs.reverse.each do |v|
+      revert(v)
+    end
   end
 
-  def solve_with(v1, pos)
+  def solve_with_pos(v1, pos)
     @cand_pos.each do |c|
       c.clear
     end
@@ -423,9 +474,79 @@ class Solver
     end
     @search_order.clear
     @search_order << v1
-    create_search_order()
+    create_search_order0()
     dfs(1)
     revert(v1)
+  end
+
+  def create_search_order0_dfs(start, visited, edges)
+    qs = [[start], [] of Int32, [] of Int32]
+    first = true
+    while !qs.all? { |q| q.empty? }
+      q = qs.find { |q| !q.empty? }.not_nil!
+      cur = q.shift
+      # cur = q.pop
+      if first
+        first = false
+      else
+        next if visited[cur]
+        visited[cur] = true
+        @search_order << cur
+      end
+      edges[cur].each do |e|
+        next if visited[e[0]]
+        qs[e[1]] << e[0]
+      end
+    end
+  end
+
+  def create_search_order0
+    edges = Array.new(@n) do |i|
+      @graph[i].map do |a|
+        j = a[0]
+        uf = UnionFind.new(@n)
+        @n.times do |k|
+          @graph[k].each do |a2|
+            l = a2[0]
+            next if {k, l}.minmax == {i, j}.minmax
+            uf.union(k, l)
+          end
+        end
+        # bridge
+        [j, uf.size(i) == @n ? 0 : 2]
+      end
+    end
+    @n.times do |i|
+      edges[i].each do |e|
+        next if e[1] != 0
+        j = e[0]
+        edges[i].each do |e1|
+          next if e1[1] != 0 || e1[0] == j
+          edges[j].each do |e2|
+            next if e2[1] != 0 || e2[0] == i
+            uf = UnionFind.new(@n)
+            @n.times do |k|
+              @graph[k].each do |a2|
+                l = a2[0]
+                next if {k, l}.minmax == {i, e1[0]}.minmax || {k, l}.minmax == {j, e2[0]}.minmax
+                uf.union(k, l)
+              end
+            end
+            if uf.size(i) != @n
+              # dual-bridge
+              e1[1] = 1
+              e2[1] = 1
+            end
+          end
+        end
+      end
+    end
+    visited = Array.new(@n, false)
+    @search_order.each { |v| visited[v] = true }
+    @search_order.each { |v| create_search_order0_dfs(v, visited, edges) }
+    # puts @search_order
+    # exit
+    @back_to = -1
   end
 
   def create_search_order
